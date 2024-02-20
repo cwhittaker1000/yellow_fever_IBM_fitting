@@ -19,7 +19,7 @@ source("functions/model2.R")
 source("functions/particle_filter.R")
 
 ## Generating synthetic data
-R0 <- 1.5
+R0 <- 3
 N <- 86
 gamma <- 0.25
 beta_sim <- R0 * gamma / N
@@ -38,7 +38,7 @@ observed_incidence <- synthetic_data$result %>%
 observed_data <- observed_incidence$daily_incidence
 plot(observed_data)
 
-## Particle Filtering
+## Checking the broken up simulations working okay
 storage_list <- list()
 seed <- rpois(1, 1000000)
 for (i in 1:length(observed_data)) {
@@ -54,7 +54,7 @@ for (i in 1:length(observed_data)) {
   } else {
     temp <- run_simulation2(seed = seed, steps = (i / dt), dt = dt, N = N, 
                             initial_infections = 1, death_obs_prop = 1, 
-                            beta = 3 * beta_sim, past_length = past_length, 
+                            beta = beta_sim, past_length = past_length, 
                             past_weightings_vector = past_weightings_vector,
                             initial_run = FALSE, overall_run_length = NA,
                             lagged_I_input = storage_list$lagged_I,
@@ -66,108 +66,247 @@ for (i in 1:length(observed_data)) {
 
   }
 }
-plot(diff(-storage_list$output$S_count))
+output_incidence <- data.frame(time = storage_list$output$timestep * dt,
+                               incidence = c(0, diff(storage_list$output$Dobs_count))) %>% 
+  mutate(timestep = floor(time)) %>%
+  group_by(timestep) %>% 
+  summarise(incidence = sum(incidence))
+plot(output_incidence$timestep, output_incidence$incidence, type = "l")
+points(observed_data, pch = 20)
 
+## R0 scan
+R0_scan <- c(0.75, 1, 1.25, 1.5, 2, 3, 4, 5)
+iterations <- 50
+seed <- rpois(iterations, 1000000)
+steps <- 1 / dt
+final_size_matrix <- matrix(NA, nrow = length(R0_scan), ncol = iterations)
+output_matrix <- array(data = NA, dim = c(length(R0_scan), iterations, length(output_incidence$incidence)))
 
-
-## Simplified version
-storage_list <- vector(mode = "list", length = 1)
-loglikelihood_matrix <- matrix(nrow = 1, ncol = length(observed_data))
-particles_kept_matrix <- matrix(nrow = 1, ncol = length(observed_data))
-weights_matrix <- matrix(nrow = 1, ncol = length(observed_data))
-deaths_df <- matrix(nrow = 1, ncol = length(observed_data))
-deaths_df2 <- matrix(nrow = 1, ncol = length(observed_data))
-for (i in 1:length(observed_data)) {
-  if (i == 1) {
-    temp_mod_output <- run_simulation2(seed = rpois(1, 10^8), steps = 1 / dt, dt = dt, N = N, 
-                                       initial_infections = 1, death_obs_prop = 1, 
-                                       beta = beta_sim, past_length = past_length, past_weightings_vector = past_weightings_vector)
-    storage_list[[1]]$output <- temp_mod_output$result
-    storage_list[[1]]$state <- temp_mod_output$state
-    previous_timestep_final_Dobs <- 0
-    current_timestep_final_Dobs <- max(storage_list[[1]]$output$Dobs_count[(1 + nrow(temp_mod_output$result) - 1/dt):nrow(temp_mod_output$result)])
-    temp_num_deaths_timestep <- current_timestep_final_Dobs - previous_timestep_final_Dobs
-    num_deaths_timestep_particle[j] <- temp_num_deaths_timestep
-    deaths_df[1, i] <- num_deaths_timestep_particle[1]
-  } else {
-    temp_mod_output <- run_simulation2(seed = rpois(1, 10^8), steps = (i / dt), dt = dt, N = N, 
-                                       initial_infections = 1, death_obs_prop = 1, 
-                                       beta = beta_sim, past_length = past_length, past_weightings_vector = past_weightings_vector,
-                                       state = storage_list[[1]]$state)
-    storage_list[[1]]$output <- rbind(storage_list[[1]]$output, temp_mod_output$result[(1 + nrow(temp_mod_output$result) - 1/dt):nrow(temp_mod_output$result), ])
-    storage_list[[1]]$state <- temp_mod_output$state
-    
-    ### this is wrong - need to remember to change this!
-    previous_timestep_final_Dobs <- max(storage_list[[1]]$output$Dobs_count[(1 + nrow(temp_mod_output$result) - 2/dt):(nrow(temp_mod_output$result) - 1/dt)])
-    current_timestep_final_Dobs <- max(storage_list[[1]]$output$Dobs_count[(1 + nrow(temp_mod_output$result) - 1/dt):nrow(temp_mod_output$result)])
-    temp_num_deaths_timestep <- current_timestep_final_Dobs - previous_timestep_final_Dobs
-    
-    
-    num_deaths_timestep_particle <- temp_num_deaths_timestep
-    deaths_df[1, i] <- num_deaths_timestep_particle
+storage_list <- list()
+for (k in 1:length(R0_scan)) {
+  beta_sim <- R0_scan[k] * gamma / N
+  for (j in 1:iterations) {
+    for (i in 1:length(observed_data)) {
+      if (i == 1) {
+        temp <- run_simulation2(seed = seed[j], steps = 1 / dt, dt = dt, N = N, 
+                                initial_infections = 1, death_obs_prop = 1, 
+                                beta = beta_sim, past_length = past_length, 
+                                past_weightings_vector = past_weightings_vector,
+                                initial_run = TRUE, overall_run_length = 505)
+        storage_list$output <- temp$result
+        storage_list$state <- temp$state
+        storage_list$lagged_I <- temp$lagged_I
+      } else {
+        temp <- run_simulation2(seed = seed[j], steps = (i / dt), dt = dt, N = N, 
+                                initial_infections = 1, death_obs_prop = 1, 
+                                beta = 3 * beta_sim, past_length = past_length, 
+                                past_weightings_vector = past_weightings_vector,
+                                initial_run = FALSE, overall_run_length = NA,
+                                lagged_I_input = storage_list$lagged_I,
+                                state = storage_list$state)
+        storage_list$output <- rbind(storage_list$output, 
+                                     temp$result[(1 + nrow(temp$result) - 1/dt):nrow(temp$result), ])
+        storage_list$state <- temp$state
+        storage_list$lagged_I <- temp$lagged_I
+      }
+    }
+    output_incidence <- data.frame(time = storage_list$output$timestep * dt,
+                                   incidence = c(0, diff(storage_list$output$Dobs_count))) %>% 
+      mutate(timestep = floor(time)) %>%
+      group_by(timestep) %>% 
+      summarise(incidence = sum(incidence))
+    final_size_matrix[k, j] <- sum(output_incidence$incidence)
+    output_matrix[k, j, ] <- output_incidence$incidence
   }
+  print(k)
 }
 
-plot(deaths_df[1, ])
-sum(deaths_df[1, ])
+plot(R0_scan, apply(final_size_matrix, 1, mean), type = "l", ylim = c(0, 86))
 
-### Setup
-particles <- 20
+## Particle filtering
+R0_scan <- c(0.75, 1, 1.25, 1.5, 2, 3, 4, 5)
+particles <- 50
+seed <- rpois(particles, 1000000)
 steps <- 1 / dt
-storage_list <- vector(mode = "list", length = particles)
-loglikelihood_matrix <- matrix(nrow = particles, ncol = length(observed_data))
-particles_kept_matrix <- matrix(nrow = particles, ncol = length(observed_data))
-weights_matrix <- matrix(nrow = particles, ncol = length(observed_data))
-deaths_df <- matrix(nrow = particles, ncol = length(observed_data))
-deaths_df2 <- matrix(nrow = particles, ncol = length(observed_data))
+loglikelihood_matrix <- array(data = NA, dim = c(length(R0_scan), particles, length(observed_data)))
+particles_kept_matrix <- array(data = NA, dim = c(length(R0_scan), particles, length(observed_data)))
+weights_matrix <- array(data = NA, dim = c(length(R0_scan), particles, length(observed_data)))
+deaths_df <- array(data = NA, dim = c(length(R0_scan), particles, length(observed_data)))
+deaths_df2 <- array(data = NA, dim = c(length(R0_scan), particles, length(observed_data)))
+final_size_matrix <- array(data = NA, dim = c(length(R0_scan), particles, length(observed_data)))
+output_matrix <- array(data = NA, dim = c(length(R0_scan), particles, length(observed_data)))
 
-test_beta <- beta_sim
-for (i in 1:length(observed_data)) {
+for (i in 1:length(R0_scan)) {
+  storage_list <- vector(mode = "list", length = particles)
+  beta_sim <- R0_scan[i] * gamma / N
   
-  for (j in 1:particles) {
+  for (j in 1:length(observed_data)) {
     
     num_deaths_timestep_particle <- vector(mode = "double", length = particles)
     
-    if (i == 1) {
-      temp_mod_output <- run_simulation2(seed = rpois(1, 10^8), steps = 1 / dt, dt = dt, N = N, 
-                                         initial_infections = 1, death_obs_prop = 1, 
-                                         beta = beta_sim, past_length = 1, past_weightings_vector = 1)
-      storage_list[[j]]$output <- temp_mod_output$result
+    for (k in 1:particles) {
       
-    } else {
-      temp_mod_output <- run_simulation2(seed = rpois(1, 10^8), steps = (i / dt), dt = dt, N = N, 
-                                         initial_infections = 1, death_obs_prop = 1, 
-                                         beta = beta_sim, past_length = 1, past_weightings_vector = 1,
-                                         state = storage_list[[j]]$state)
-      storage_list[[j]]$output <- rbind(storage_list[[j]]$output, temp_mod_output$result[(1 + nrow(temp_mod_output$result) - 1/dt):nrow(temp_mod_output$result), ])
+      if (j == 1) {
+        temp <- run_simulation2(seed = seed[k], steps = 1 / dt, dt = dt, N = N, 
+                                initial_infections = 1, death_obs_prop = 1, 
+                                beta = beta_sim, past_length = past_length, 
+                                past_weightings_vector = past_weightings_vector,
+                                initial_run = TRUE, overall_run_length = 505)
+        storage_list[[k]]$output <- temp$result
+        
+      } else {
+        temp <- run_simulation2(seed = seed[k], steps = (j / dt), dt = dt, N = N, 
+                                initial_infections = 1, death_obs_prop = 1, 
+                                beta = beta_sim, past_length = past_length, 
+                                past_weightings_vector = past_weightings_vector,
+                                initial_run = FALSE, overall_run_length = NA,
+                                lagged_I_input = storage_list[[k]]$lagged_I,
+                                state = storage_list[[k]]$state)
+        storage_list[[k]]$output <- rbind(storage_list[[k]]$output, 
+                                          temp$result[(1 + nrow(temp$result) - 1/dt):nrow(temp$result), ])
+      }
+      
+      storage_list[[k]]$lagged_I <- temp$lagged_I
+      storage_list[[k]]$state <- temp$state
+      
+      curr_timestep_Dobs <- max(temp$result$Dobs_count[(1 + nrow(temp$result) - 1/dt):nrow(temp$result)])
+      if (j == 1) {
+        prev_timestep_Dobs <- 0
+      } else {
+        prev_timestep_Dobs <- storage_list[[k]]$output$Dobs_count[(nrow(temp$result) - 1/dt)] # get the last timepoint of the previous
+      }
+      temp_num_deaths_timestep <- curr_timestep_Dobs - prev_timestep_Dobs
+      num_deaths_timestep_particle[k] <- temp_num_deaths_timestep
+      deaths_df[i, k, j] <- temp_num_deaths_timestep
       
     }
-    storage_list[[j]]$state <- temp_mod_output$state
-    timestep_Dobs <- temp_mod_output$result$Dobs_count[(1 + nrow(temp_mod_output$result) - 1/dt):nrow(temp_mod_output$result)]
-    temp_num_deaths_timestep <- max(timestep_Dobs) - min(timestep_Dobs)
-    num_deaths_timestep_particle[j] <- temp_num_deaths_timestep
-    deaths_df[j, i] <- num_deaths_timestep_particle[j]
+    
+    num_deaths_timestep_particle2 <- deaths_df[i, , j]
+    num_deaths_timestep_particle2[num_deaths_timestep_particle2 == 0] <- 0.01
+    eval_loglik <- weight_particles(num_deaths_timestep_particle2, observed_data[j])
+    
+    weights_matrix[i, , j] <- eval_loglik$raw_weights
+    resampled_weights <- sample(1:particles, prob = eval_loglik$normalised_weights, replace = TRUE)
+    loglikelihood_matrix[i, , j] <- eval_loglik$logliklihoods[resampled_weights]
+    particles_kept_matrix[i, , j] <- resampled_weights
+    storage_list <- storage_list[resampled_weights]
+    deaths_df2[i, , j] <- num_deaths_timestep_particle[resampled_weights]
+    
+    # if (length(unique(resampled_weights)) == 1) {
+    #   stop("particle collapse")
+    # }
+    
+    print(c(j, k))
+    
   }
-  
-  num_deaths_timestep_particle2 <- deaths_df[, i]
-  num_deaths_timestep_particle2[num_deaths_timestep_particle2 == 0] <- 0.01
-  eval_loglik <- weight_particles(num_deaths_timestep_particle2, observed_data[i])
-  
-  ## should the weights be the resampled or the raw weights???
-  weights_matrix[, i] <- eval_loglik$raw_weights
-  resampled_weights <- sample(1:particles, prob = eval_loglik$normalised_weights, replace = TRUE)
-  loglikelihood_matrix[, i] <- eval_loglik$logliklihoods[resampled_weights]
-  particles_kept_matrix[, i] <- resampled_weights
-  storage_list <- storage_list[resampled_weights]
-  deaths_df2[, i] <- num_deaths_timestep_particle[resampled_weights]
-  
-  if (length(unique(resampled_weights)) == 1) {
-    stop("particle collapse")
-  }
-  
-  print(c(i, j))
-  
+  print(i)
 }
+
+colors37 <- c("#466791","#60bf37","#953ada","#4fbe6c","#ce49d3","#a7b43d","#5a51dc","#d49f36","#552095","#507f2d","#db37aa","#84b67c","#a06fda","#df462a","#5b83db","#c76c2d","#4f49a3","#82702d","#dd6bbb","#334c22","#d83979","#55baad","#dc4555","#62aad3","#8c3025","#417d61","#862977","#bba672","#403367","#da8a6d","#a79cd4","#71482c","#c689d0","#6b2940","#d593a7","#895c8b","#bd5975")
+par(mfrow = c(2, 4), mar = c(2, 2, 2, 2))
+for (k in 1:length(R0_scan)) {
+  logliks <- apply(weights_matrix[k, , ], 2, function(x) {
+    average_weight <- mean(x)
+    log(average_weight)
+  })
+  loglik <- sum(logliks)
+  
+  for (i in 1:particles) {
+    if (i == 1) {
+      plot(deaths_df2[k, i, ], type = "l", col = adjustcolor(colors37[k], alpha.f = 0.1),
+           ylim = c(0, max(c(observed_data, deaths_df2[k, , ]))),
+           main = paste0("R0 = ", R0_scan[k], ", loglik = ", round(loglik)),
+           ylab = "", xlab = "")
+    } else {
+      lines(deaths_df2[k, i, ], type = "l", col = adjustcolor(colors37[k], alpha.f = 0.1))
+    }
+  }
+  points(observed_data, pch = 20, col = "black", cex = 1)
+}
+
+
+
+
+
+# ## Particle filtering
+# R0_scan <- c(2, 3) # c(0.75, 1, 1.25, 1.5, 2, 3, 5)
+# particles <- 50
+# seed <- rpois(particles, 1000000)
+# steps <- 1 / dt
+# storage_list <- vector(mode = "list", length = particles)
+# loglikelihood_matrix <- matrix(nrow = particles, ncol = length(observed_data))
+# particles_kept_matrix <- matrix(nrow = particles, ncol = length(observed_data))
+# weights_matrix <- matrix(nrow = particles, ncol = length(observed_data))
+# deaths_df <- matrix(nrow = particles, ncol = length(observed_data))
+# deaths_df2 <- matrix(nrow = particles, ncol = length(observed_data))
+# final_size_matrix <- matrix(NA, nrow = length(R0_scan), ncol = particles)
+# output_matrix <- array(data = NA, dim = c(length(R0_scan), particles, length(output_incidence$incidence)))
+# 
+# for (i in 1:length(R0_scan)) {
+#   
+#   beta_sim <- R0_scan[i] * gamma / N
+#   
+#   for (j in 1:length(observed_data)) {
+#     
+#     num_deaths_timestep_particle <- vector(mode = "double", length = particles)
+#     
+#     for (k in 1:particles) {
+#       
+#       if (j == 1) {
+#         temp <- run_simulation2(seed = seed[k], steps = 1 / dt, dt = dt, N = N, 
+#                                 initial_infections = 1, death_obs_prop = 1, 
+#                                 beta = beta_sim, past_length = past_length, 
+#                                 past_weightings_vector = past_weightings_vector,
+#                                 initial_run = TRUE, overall_run_length = 505)
+#         storage_list[[k]]$output <- temp$result
+#         
+#       } else {
+#         temp <- run_simulation2(seed = seed[k], steps = (j / dt), dt = dt, N = N, 
+#                                 initial_infections = 1, death_obs_prop = 1, 
+#                                 beta = beta_sim, past_length = past_length, 
+#                                 past_weightings_vector = past_weightings_vector,
+#                                 initial_run = FALSE, overall_run_length = NA,
+#                                 lagged_I_input = storage_list[[k]]$lagged_I,
+#                                 state = storage_list[[k]]$state)
+#         storage_list[[k]]$output <- rbind(storage_list[[k]]$output, 
+#                                           temp$result[(1 + nrow(temp$result) - 1/dt):nrow(temp$result), ])
+#       }
+#       
+#       storage_list[[k]]$lagged_I <- temp$lagged_I
+#       storage_list[[k]]$state <- temp$state
+#       
+#       curr_timestep_Dobs <- max(temp$result$Dobs_count[(1 + nrow(temp$result) - 1/dt):nrow(temp$result)])
+#       if (j == 1) {
+#         prev_timestep_Dobs <- 0
+#       } else {
+#         prev_timestep_Dobs <- storage_list[[k]]$output$Dobs_count[(nrow(temp$result) - 1/dt)] # get the last timepoint of the previous
+#       }
+#       temp_num_deaths_timestep <- curr_timestep_Dobs - prev_timestep_Dobs
+#       num_deaths_timestep_particle[k] <- temp_num_deaths_timestep
+#       deaths_df[k, j] <- temp_num_deaths_timestep
+#       
+#     }
+#     
+#     num_deaths_timestep_particle2 <- deaths_df[, j]
+#     num_deaths_timestep_particle2[num_deaths_timestep_particle2 == 0] <- 0.01
+#     eval_loglik <- weight_particles(num_deaths_timestep_particle2, observed_data[j])
+#     
+#     weights_matrix[, j] <- eval_loglik$raw_weights
+#     resampled_weights <- sample(1:particles, prob = eval_loglik$normalised_weights, replace = TRUE)
+#     loglikelihood_matrix[, j] <- eval_loglik$logliklihoods[resampled_weights]
+#     particles_kept_matrix[, j] <- resampled_weights
+#     storage_list <- storage_list[resampled_weights]
+#     deaths_df2[, j] <- num_deaths_timestep_particle[resampled_weights]
+#     
+#     if (length(unique(resampled_weights)) == 1) {
+#       stop("particle collapse")
+#     }
+#     
+#     print(c(j, k))
+# 
+#   }
+#   print(i)
+# }
 
 apply(particles_kept_matrix, 2, function(x) length(unique(x)))
 for (i in 1:particles) {
