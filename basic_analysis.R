@@ -13,6 +13,9 @@ library(individual); library(dplyr); library(EasyABC); library(tidyverse)
 ## 3) note that need to think about how long incubation period is for monkey to monkey
 ## i.e. not implicitly considering the mosquito here - should we be? Think we need delay equations
 ## in the FOI experienced by S monkeys by I monkeys
+## 4) whilst 3) has kind of been addresse with the delay, note that I'm currently multiply weighting
+##    folks in I compartment, and need to find some of not doing this (i.e. properly replicate the renewal
+##    equation)
 
 ## Sourcing functions
 source("functions/model2.R")
@@ -75,57 +78,57 @@ plot(output_incidence$timestep, output_incidence$incidence, type = "l")
 points(observed_data, pch = 20)
 
 ## R0 scan
-R0_scan <- c(0.75, 1, 1.25, 1.5, 2, 3, 4, 5)
-iterations <- 50
-seed <- rpois(iterations, 1000000)
-steps <- 1 / dt
-final_size_matrix <- matrix(NA, nrow = length(R0_scan), ncol = iterations)
-output_matrix <- array(data = NA, dim = c(length(R0_scan), iterations, length(output_incidence$incidence)))
-
-storage_list <- list()
-for (k in 1:length(R0_scan)) {
-  beta_sim <- R0_scan[k] * gamma / N
-  for (j in 1:iterations) {
-    for (i in 1:length(observed_data)) {
-      if (i == 1) {
-        temp <- run_simulation2(seed = seed[j], steps = 1 / dt, dt = dt, N = N, 
-                                initial_infections = 1, death_obs_prop = 1, 
-                                beta = beta_sim, past_length = past_length, 
-                                past_weightings_vector = past_weightings_vector,
-                                initial_run = TRUE, overall_run_length = 505)
-        storage_list$output <- temp$result
-        storage_list$state <- temp$state
-        storage_list$lagged_I <- temp$lagged_I
-      } else {
-        temp <- run_simulation2(seed = seed[j], steps = (i / dt), dt = dt, N = N, 
-                                initial_infections = 1, death_obs_prop = 1, 
-                                beta = 3 * beta_sim, past_length = past_length, 
-                                past_weightings_vector = past_weightings_vector,
-                                initial_run = FALSE, overall_run_length = NA,
-                                lagged_I_input = storage_list$lagged_I,
-                                state = storage_list$state)
-        storage_list$output <- rbind(storage_list$output, 
-                                     temp$result[(1 + nrow(temp$result) - 1/dt):nrow(temp$result), ])
-        storage_list$state <- temp$state
-        storage_list$lagged_I <- temp$lagged_I
-      }
-    }
-    output_incidence <- data.frame(time = storage_list$output$timestep * dt,
-                                   incidence = c(0, diff(storage_list$output$Dobs_count))) %>% 
-      mutate(timestep = floor(time)) %>%
-      group_by(timestep) %>% 
-      summarise(incidence = sum(incidence))
-    final_size_matrix[k, j] <- sum(output_incidence$incidence)
-    output_matrix[k, j, ] <- output_incidence$incidence
-  }
-  print(k)
-}
-
-plot(R0_scan, apply(final_size_matrix, 1, mean), type = "l", ylim = c(0, 86))
+# R0_scan <- c(0.75, 1, 1.25, 1.5, 2, 3, 4, 5)
+# iterations <- 50
+# seed <- rpois(iterations, 1000000)
+# steps <- 1 / dt
+# final_size_matrix <- matrix(NA, nrow = length(R0_scan), ncol = iterations)
+# output_matrix <- array(data = NA, dim = c(length(R0_scan), iterations, length(output_incidence$incidence)))
+# 
+# storage_list <- list()
+# for (k in 1:length(R0_scan)) {
+#   beta_sim <- R0_scan[k] * gamma / N
+#   for (j in 1:iterations) {
+#     for (i in 1:length(observed_data)) {
+#       if (i == 1) {
+#         temp <- run_simulation2(seed = seed[j], steps = 1 / dt, dt = dt, N = N, 
+#                                 initial_infections = 1, death_obs_prop = 1, 
+#                                 beta = beta_sim, past_length = past_length, 
+#                                 past_weightings_vector = past_weightings_vector,
+#                                 initial_run = TRUE, overall_run_length = 505)
+#         storage_list$output <- temp$result
+#         storage_list$state <- temp$state
+#         storage_list$lagged_I <- temp$lagged_I
+#       } else {
+#         temp <- run_simulation2(seed = seed[j], steps = (i / dt), dt = dt, N = N, 
+#                                 initial_infections = 1, death_obs_prop = 1, 
+#                                 beta = 3 * beta_sim, past_length = past_length, 
+#                                 past_weightings_vector = past_weightings_vector,
+#                                 initial_run = FALSE, overall_run_length = NA,
+#                                 lagged_I_input = storage_list$lagged_I,
+#                                 state = storage_list$state)
+#         storage_list$output <- rbind(storage_list$output, 
+#                                      temp$result[(1 + nrow(temp$result) - 1/dt):nrow(temp$result), ])
+#         storage_list$state <- temp$state
+#         storage_list$lagged_I <- temp$lagged_I
+#       }
+#     }
+#     output_incidence <- data.frame(time = storage_list$output$timestep * dt,
+#                                    incidence = c(0, diff(storage_list$output$Dobs_count))) %>% 
+#       mutate(timestep = floor(time)) %>%
+#       group_by(timestep) %>% 
+#       summarise(incidence = sum(incidence))
+#     final_size_matrix[k, j] <- sum(output_incidence$incidence)
+#     output_matrix[k, j, ] <- output_incidence$incidence
+#   }
+#   print(k)
+# }
+# 
+# plot(R0_scan, apply(final_size_matrix, 1, mean), type = "l", ylim = c(0, 86))
 
 ## Particle filtering
 R0_scan <- c(0.75, 1, 1.25, 1.5, 2, 3, 4, 5)
-particles <- 50
+particles <- 300
 seed <- rpois(particles, 1000000)
 steps <- 1 / dt
 loglikelihood_matrix <- array(data = NA, dim = c(length(R0_scan), particles, length(observed_data)))
