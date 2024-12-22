@@ -132,14 +132,32 @@ for (i in 1:length(R0_scan)) {
   
 }
 
+saveRDS(list(output = output_matrix, final_size = final_size_matrix, loglike = loglikelihood_matrix),
+        "3_horto_YFV_R0_estimation/initial_parameterScan_hortoEstimation.rds")
+
 loglik_avg <- apply(loglikelihood_matrix, c(2, 3), mean)
 colnames(loglik_avg) <- paste0("start=", start_date_scan)
 rownames(loglik_avg) <- paste0("R0=", R0_scan)
 
+df_long <- data.frame(R0 = R0_scan, loglik_avg) %>%
+  pivot_longer(cols = -R0, 
+               names_to = "StartDate",
+               values_to = "Value") %>% 
+  mutate(StartDate = sub("^start\\.", "", StartDate), 
+         StartDate = gsub("\\.", "-", StartDate), 
+         StartDate = as.Date(StartDate, format = "%Y-%m-%d"))
 
-saveRDS(list(output = output_matrix, final_size = final_size_matrix, loglike = loglikelihood_matrix),
-        "1_synthetic_data_analysis/syntheticTest_parameterScan_output.rds")
-
-
-
-
+ggplot(df_long, aes(x = StartDate, y = factor(R0), fill = Value)) +
+  geom_tile(color = "white") +
+  scale_fill_distiller(palette = "RdBu", limits = c(-60, -50), oob = scales::squish) + 
+  labs(
+    title = "Heatmap of Values by R₀ and Start Date",
+    x = "Start Date",
+    y = expression(R[0]),
+    fill = "Value"
+  ) +
+  theme_minimal() +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    plot.title = element_text(hjust = 0.5, face = "bold")
+  )
