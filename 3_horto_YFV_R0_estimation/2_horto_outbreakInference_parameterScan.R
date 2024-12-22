@@ -145,7 +145,10 @@ df_long <- data.frame(R0 = R0_scan, loglik_avg) %>%
                values_to = "Value") %>% 
   mutate(StartDate = sub("^start\\.", "", StartDate), 
          StartDate = gsub("\\.", "-", StartDate), 
-         StartDate = as.Date(StartDate, format = "%Y-%m-%d"))
+         StartDate = as.Date(StartDate, format = "%Y-%m-%d")) %>%
+  mutate(LogLikelihood_adj = Value - max(Value),
+         Likelihood = exp(LogLikelihood_adj),
+         Probability = Likelihood / sum(Likelihood))
 
 ggplot(df_long, aes(x = StartDate, y = factor(R0), fill = Value)) +
   geom_tile(color = "white") +
@@ -161,3 +164,71 @@ ggplot(df_long, aes(x = StartDate, y = factor(R0), fill = Value)) +
     axis.text.x = element_text(angle = 45, hjust = 1),
     plot.title = element_text(hjust = 0.5, face = "bold")
   )
+
+colors37 <- c("#466791","#60bf37","#953ada","#4fbe6c","#ce49d3","#a7b43d","#5a51dc","#d49f36","#552095","#507f2d","#db37aa","#84b67c","#a06fda","#df462a","#5b83db","#c76c2d","#4f49a3","#82702d","#dd6bbb","#334c22","#d83979","#55baad","#dc4555","#62aad3","#8c3025","#417d61","#862977","#bba672","#403367","#da8a6d","#a79cd4","#71482c","#c689d0","#6b2940","#d593a7","#895c8b","#bd5975")
+par(mfrow = c(length(R0_scan), length(start_date_scan)), mar = c(2, 2, 2, 2))
+for (i in 1:10) {
+  for (j in 1:10) {
+    padding_zeroes <- rep(0, as.numeric(start_date_scan[j] - start_date_scan[1]))
+    for (k in 1:iterations) {
+      if (k == 1) {
+        plot(output_matrix[k, i, j, ], type = "l", col = adjustcolor(colors37[i], alpha.f = 0.2),
+             ylim = c(0, max(c(horto_df_fitting$count, output_matrix[, i, , ]))),
+             main = paste0("R0 = ", R0_scan[i], ", loglik = ", 
+                           round(apply(loglikelihood_matrix, c(2, 3), mean)[i, j], 2)),
+             ylab = "", xlab = "")
+      } else {
+        lines(output_matrix[k, i, j, ], type = "l", col = adjustcolor(colors37[i], alpha.f = 0.2))
+      }
+    }
+    points(horto_df_fitting$count, pch = 20, col = "black", cex = 1)
+  }
+}
+
+set.seed(123)  # For reproducibility
+samples <- 10000
+sampled_indices <- sample(
+  1:nrow(df_long),
+  size = 10000,
+  replace = TRUE,
+  prob = df_long$Probability
+)
+sampled_data <- df_long[sampled_indices, c("R0", "StartDate")]
+for (i in 1:nrow(sampled_data)) {
+  R0 <- unlist(sampled_data[i, "R0"])
+  R0_index <- which(rownames(loglik_avg) == paste0("R0=", R0))
+  start_date <- sampled_data[i, "StartDate"]
+  start_date <- start_date$StartDate
+  start_date_index <- which(colnames(loglik_avg) == paste0("start=", start_date))
+  k <- sample(1:iterations, 1)
+  if (i == 1) {
+    plot(output_matrix[k, R0_index, start_date_index, ], type = "l", col = adjustcolor("red", alpha.f = 0.2),
+         ylim = c(0, max(c(horto_df_fitting$count, output_matrix[, i, , ]))), ylab = "", xlab = "")
+  } else {
+    lines(output_matrix[k, R0_index, start_date_index, ], type = "l", col = adjustcolor("red", alpha.f = 0.2))
+  }
+}
+points(horto_df_fitting$count, pch = 20, col = "black", cex = 1)
+
+sampled_output_matrix <- matrix(nrow = samples, ncol = length(horto_df_fitting$count))
+for (i in 1:samples) {
+  R0 <- unlist(sampled_data[i, "R0"])
+  R0_index <- which(rownames(loglik_avg) == paste0("R0=", R0))
+  start_date <- sampled_data[i, "StartDate"]
+  start_date <- start_date$StartDate
+  start_date_index <- which(colnames(loglik_avg) == paste0("start=", start_date))
+  k <- sample(1:iterations, 1)
+  sampled_output_matrix[i, ] <- output_matrix[k, R0_index, start_date_index, ]
+}
+
+lower <- apply(sampled_output_matrix, 2, min)
+upper <- apply(sampled_output_matrix, 2, max)
+lower <- apply(sampled_output_matrix, 2, quantile, 0.025)
+upper <- apply(sampled_output_matrix, 2, quantile, 0.975)
+mean <- apply(sampled_output_matrix, 2, mean)
+
+plot(mean, type = "l", col = adjustcolor("red", alpha.f = 1),
+     ylim = c(0, max(c(horto_df_fitting$count, output_matrix))), ylab = "", xlab = "")
+lines(lower)
+lines(upper)
+points(horto_df_fitting$count, pch = 20, col = "black", cex = 1)

@@ -166,6 +166,7 @@ for (i in 1:length(R0_scan)) {
         lines(output_matrix[k, i, j, ], type = "l", col = adjustcolor(colors37[i], alpha.f = 0.2))
       }
     }
+    ## check if this is right
     if (start_date_scan[j] < 0) {
       padding_zeroes <- rep(0, abs(start_date_scan[1]) - abs(start_date_scan[j]))
     } else if (start_date_scan[j] == 1) {
