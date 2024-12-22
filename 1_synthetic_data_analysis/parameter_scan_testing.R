@@ -4,7 +4,7 @@ library(foreach); library(doParallel); library(tictoc); library(parallel); libra
 library(tictoc)
 
 ## Sourcing functions
-source("functions/model2.R")
+source("functions/IBM_model.R")
 source("functions/particle_filter.R")
 
 # Loading in fitted parameters
@@ -142,10 +142,8 @@ for (i in 1:length(R0_scan)) {
 
 }
 
-saveRDS(list(output = output_matrix, 
-             final_size = final_size_matrix, 
-             loglike = loglikelihood_matrix),
-        "synthetic_test_scan.rds")
+saveRDS(list(output = output_matrix, final_size = final_size_matrix, loglike = loglikelihood_matrix),
+        "1_synthetic_data_analysis/syntheticTest_parameterScan_output.rds")
 
 dim(loglikelihood_matrix)
 
