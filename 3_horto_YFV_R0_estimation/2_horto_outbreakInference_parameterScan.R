@@ -1,5 +1,5 @@
 # load required libraries
-library(individual); library(dplyr); library(tidyverse)
+library(individual); library(dplyr); library(tidyverse); library(doParallel); library(tictoc); library(parallel); library(profvis);
 
 ## Sourcing functions
 source("functions/IBM_model.R")
@@ -26,7 +26,7 @@ epi_curve <- incidence::incidence(horto_df$date_collection)
 plot(epi_curve)
 
 # Generating incidence data and cutting off first 4 infections
-start_date <- as.Date("2017-12-01")
+start_date <- as.Date("2017-11-12")
 horto_df_fitting <- horto_df %>%
   filter(date_collection > start_date) %>%
   group_by(date_collection) %>%
@@ -41,120 +41,105 @@ horto_df_fitting$time <- 1:nrow(horto_df_fitting)
 ## Particle filtering
 
 ## Model parameters
-N <- 86 - 3 # (3 negative monkeys - assume the rest not in database killed by yellow fever)
+N <- 86 - 3 - 3 # (3 negative monkeys - assume the rest not in database killed by yellow fever) and other 3 are predeceased from where we're starting
+N_obs <- sum(horto_df_fitting$count)
+death_obs_prop <- N_obs / N
 dt <- 0.2
-steps <- 1 / dt
-initial_infections <- 2
+initial_infections <- 1
 gamma <- 1 / (infectious_period_gamma_shape / infectious_period_gamma_rate)
 
-## Parameters for particle filtering
-# R0_scan <- c(4, 5, 6, 7, 8, 9, 10, 11, 12)
-R0_scan <- c(4, 8, 12)
-particles <- 200
-seed <- rpois(particles, 1000000)
+## Parameters for initial particle filtering to identify parameter regime of highest likelihood
+R0_scan <- c(4, 5, 6, 7, 8, 9, 10, 11, 12, 13)
+start_date_scan <- as.Date(c("2017-11-12", "2017-11-14", "2017-11-16", "2017-11-18", "2017-11-20",
+                             "2017-11-22", "2017-11-24", "2017-11-26", "2017-11-28", "2017-11-30"))
+iterations <- 10
+particles <- 500
+cores <- 10
 
-## Storage for particle filtering
-loglikelihood_matrix <- array(data = NA, dim = c(length(R0_scan), particles, length(horto_df_fitting$time)))
-particles_kept_matrix <- array(data = NA, dim = c(length(R0_scan), particles, length(horto_df_fitting$time)))
-weights_matrix <- array(data = NA, dim = c(length(R0_scan), particles, length(horto_df_fitting$time)))
-deaths_df <- array(data = NA, dim = c(length(R0_scan), particles, length(horto_df_fitting$time)))
-deaths_df2 <- array(data = NA, dim = c(length(R0_scan), particles, length(horto_df_fitting$time)))
-final_size_matrix <- array(data = NA, dim = c(length(R0_scan), particles, length(horto_df_fitting$time)))
-output_matrix <- array(data = NA, dim = c(length(R0_scan), particles, length(horto_df_fitting$time)))
+loglikelihood_matrix <- array(data = NA, dim = c(iterations, length(R0_scan), length(start_date_scan)))
+final_size_matrix <- array(data = NA, dim = c(iterations, length(R0_scan), length(start_date_scan)))
+output_matrix <- array(data = NA, dim = c(iterations, length(R0_scan), length(start_date_scan), length(horto_df_fitting$count)))
 
+overall_seed <- 10
+set.seed(overall_seed)
+simulation_seeds <- array(data = rnbinom(n = iterations * length(R0_scan) * length(start_date_scan), mu = 10^6, size = 1), 
+                          dim = c(length(R0_scan), length(start_date_scan), iterations))
+
+## Looping through R0
 for (i in 1:length(R0_scan)) {
-  storage_list <- vector(mode = "list", length = particles)
-  beta_sim <- R0_scan[i] * gamma / N
   
-  for (j in 1:length(horto_df_fitting$time)) {
+  ## Looping through the start dates
+  for (j in 1:length(start_date_scan)) {
     
-    num_deaths_timestep_particle <- vector(mode = "double", length = particles)
+    # Selecting the start date and filtering the Horto data to start then
+    start_date <- start_date_scan[j]
+    data <- horto_df_fitting %>%
+      filter(date_collection >= start_date) %>%
+      rename(daily_incidence = count)
+    steps <- nrow(data) / dt
     
-    for (k in 1:particles) {
-      
-      if (j == 1) {
-        temp <- run_simulation2(seed = seed[k], steps = 1 / dt, dt = dt, N = N, 
-                                initial_infections = initial_infections, death_obs_prop = 1, 
-                                beta = beta_sim,
-                                initial_run = TRUE, overall_run_length = 505,
-                                latent_period_gamma_shape = latent_period_gamma_shape, 
-                                EIP_gamma_shape = EIP_gamma_shape,
-                                EIP_gamma_rate = EIP_gamma_rate, 
-                                latent_period_gamma_rate = latent_period_gamma_rate,
-                                infectious_period_gamma_shape = infectious_period_gamma_shape, 
-                                infectious_period_gamma_rate = infectious_period_gamma_rate,
-                                death_observation_gamma_shape = 1, 
-                                death_observation_gamma_rate = death_observation_gamma_rate,
-                                state = NULL)
-        storage_list[[k]]$output <- temp$result
-        
-      } else {
-        temp <- run_simulation2(seed = seed[k], steps = (j / dt), dt = dt, N = N, 
-                                initial_infections = initial_infections, death_obs_prop = 1, 
-                                beta = beta_sim, 
-                                initial_run = FALSE, overall_run_length = NA,
-                                latent_period_gamma_shape = latent_period_gamma_shape, 
-                                EIP_gamma_shape = EIP_gamma_shape,
-                                EIP_gamma_rate = EIP_gamma_rate, 
-                                latent_period_gamma_rate = latent_period_gamma_rate,
-                                infectious_period_gamma_shape = infectious_period_gamma_shape, 
-                                infectious_period_gamma_rate = infectious_period_gamma_rate,
-                                death_observation_gamma_shape = 1, 
-                                death_observation_gamma_rate = death_observation_gamma_rate,
-                                state = storage_list[[k]]$state)
-        storage_list[[k]]$output <- rbind(storage_list[[k]]$output, 
-                                          temp$result[(1 + nrow(temp$result) - 1/dt):nrow(temp$result), ])
-      }
-      
-      storage_list[[k]]$state <- temp$state
-      
-      curr_timestep_Dobs <- max(temp$result$Dobs_count[(1 + nrow(temp$result) - 1/dt):nrow(temp$result)])
-      if (j == 1) {
-        prev_timestep_Dobs <- 0
-      } else {
-        prev_timestep_Dobs <- storage_list[[k]]$output$Dobs_count[(nrow(temp$result) - 1/dt)] # get the last timepoint of the previous
-      }
-      temp_num_deaths_timestep <- curr_timestep_Dobs - prev_timestep_Dobs
-      num_deaths_timestep_particle[k] <- temp_num_deaths_timestep
-      deaths_df[i, k, j] <- temp_num_deaths_timestep
-      
+    # Defining the misc list that supports running the particle filter
+    misc <- list(seed = simulation_seeds[i, j,  ], 
+                 steps = steps, 
+                 gamma = gamma,
+                 particles = particles,
+                 dt = dt, 
+                 N = N, 
+                 initial_infections = initial_infections, 
+                 death_obs_prop = death_obs_prop, 
+                 initial_run = TRUE, 
+                 overall_run_length = steps,
+                 latent_period_gamma_shape = latent_period_gamma_shape, 
+                 EIP_gamma_shape = EIP_gamma_shape,
+                 EIP_gamma_rate = EIP_gamma_rate, 
+                 latent_period_gamma_rate = latent_period_gamma_rate,
+                 infectious_period_gamma_shape = infectious_period_gamma_shape, 
+                 infectious_period_gamma_rate = infectious_period_gamma_rate,
+                 death_observation_gamma_shape = 1, 
+                 death_observation_gamma_rate = death_observation_gamma_rate)
+    
+    # Setting up the cluster to run everything in parallel
+    cl <- makeCluster(cores)
+    clusterExport(cl, varlist = c("r_loglike", "weight_particles", "data", "misc", "run_simulation2"))
+    clusterEvalQ(cl, {
+      library(individual)
+    })
+    
+    # Running the loglikelihood function in parallel
+    R0_temp <- c("R0" = R0_scan[i])
+    clusterExport(cl, varlist = c("R0_temp"))
+    result_parallel <- parLapply(cl, 1:iterations, function(i) {
+      misc_new <- misc
+      misc_new$seed <- misc$seed[i]
+      temp <- r_loglike(R0_temp, data, misc_new)
+      return(temp)
+    })
+    parallel::stopCluster(cl)
+    
+    # Storing the output
+    padding_zeroes <- rep(0, as.numeric(start_date_scan[j] - start_date_scan[1]))
+    for (k in 1:iterations) {
+      output_matrix[k, i, j, ] <- c(padding_zeroes, result_parallel[[k]]$deaths_trajectory)
+      final_size_matrix[k, i, j] <- sum(result_parallel[[k]]$deaths_trajectory)
+      loglikelihood_matrix[k, i, j] <- result_parallel[[k]]$loglikelihood
     }
     
-    num_deaths_timestep_particle2 <- deaths_df[i, , j]
-    num_deaths_timestep_particle2[num_deaths_timestep_particle2 == 0] <- 0.01 # see if this is actually needed - need to change this.
-    eval_loglik <- weight_particles(num_deaths_timestep_particle2, horto_df_fitting$count[j])
-    
-    weights_matrix[i, , j] <- eval_loglik$raw_weights
-    resampled_weights <- sample(1:particles, prob = eval_loglik$normalised_weights, replace = TRUE)
-    loglikelihood_matrix[i, , j] <- eval_loglik$logliklihoods[resampled_weights]
-    particles_kept_matrix[i, , j] <- resampled_weights
-    storage_list <- storage_list[resampled_weights]
-    deaths_df2[i, , j] <- num_deaths_timestep_particle[resampled_weights]
-    
-    print(c(j, k))
+    print(c("j = ", j))
     
   }
+  
   print(i)
+  
 }
 
-colors37 <- c("#466791","#60bf37","#953ada","#4fbe6c","#ce49d3","#a7b43d","#5a51dc","#d49f36","#552095","#507f2d","#db37aa","#84b67c","#a06fda","#df462a","#5b83db","#c76c2d","#4f49a3","#82702d","#dd6bbb","#334c22","#d83979","#55baad","#dc4555","#62aad3","#8c3025","#417d61","#862977","#bba672","#403367","#da8a6d","#a79cd4","#71482c","#c689d0","#6b2940","#d593a7","#895c8b","#bd5975")
-par(mfrow = c(2, 5), mar = c(2, 2, 2, 2))
-for (k in 1:length(R0_scan)) {
-  logliks <- apply(weights_matrix[k, , ], 2, function(x) {
-    average_weight <- mean(x)
-    log(average_weight)
-  })
-  loglik <- sum(logliks)
-  
-  for (i in 1:particles) {
-    if (i == 1) {
-      plot(deaths_df2[k, i, ], type = "l", col = adjustcolor(colors37[k], alpha.f = 0.1),
-           ylim = c(0, max(c(horto_df_fitting$count, deaths_df2[k, , ]))),
-           main = paste0("R0 = ", R0_scan[k], ", loglik = ", round(loglik)),
-           ylab = "", xlab = "")
-    } else {
-      lines(deaths_df2[k, i, ], type = "l", col = adjustcolor(colors37[k], alpha.f = 0.1))
-    }
-  }
-  points(horto_df_fitting$count, pch = 20, col = "black", cex = 1)
-}
+loglik_avg <- apply(loglikelihood_matrix, c(2, 3), mean)
+colnames(loglik_avg) <- paste0("start=", start_date_scan)
+rownames(loglik_avg) <- paste0("R0=", R0_scan)
+
+
+saveRDS(list(output = output_matrix, final_size = final_size_matrix, loglike = loglikelihood_matrix),
+        "1_synthetic_data_analysis/syntheticTest_parameterScan_output.rds")
+
+
+
+

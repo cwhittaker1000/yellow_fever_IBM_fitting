@@ -10,6 +10,7 @@ weight_particles <- function(particle_values, observed) {
 r_loglike <- function(params, data, misc) {
   
   # Set.seed
+  set.seed(misc$seed)
   misc$seed <- rpois(misc$particles, 1000000)
   
   ## Converting R0 to model input beta
