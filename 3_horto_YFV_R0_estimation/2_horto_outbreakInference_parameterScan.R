@@ -1,8 +1,8 @@
 # load required libraries
-library(individual); library(dplyr); library(EasyABC); library(tidyverse)
+library(individual); library(dplyr); library(tidyverse)
 
 ## Sourcing functions
-source("functions/model2.R")
+source("functions/IBM_model.R")
 source("functions/particle_filter.R")
 
 # Loading in fitted parameters
