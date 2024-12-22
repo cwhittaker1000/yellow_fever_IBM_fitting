@@ -113,7 +113,8 @@ run_simulation2 <- function(seed, steps, dt, N, initial_infections, death_obs_pr
   health_render_process <- categorical_count_renderer_process(
     renderer = health_render,
     variable = health,
-    categories =  c("S", "E", "I", "D", "D_unobs", "Dobs")
+    # categories =  c("S", "E", "I", "D", "D_unobs", "Dobs")
+    categories =  c("D_unobs", "Dobs")
   )
   
   ## Run simulation loop

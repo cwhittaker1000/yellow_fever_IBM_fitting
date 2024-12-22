@@ -1,6 +1,7 @@
 # load required libraries
 library(individual); library(dplyr); library(tidyverse); library(truncnorm); library(tmvtnorm)
-library(foreach); library(doParallel); library(tictoc); library(parallel)
+library(foreach); library(doParallel); library(tictoc); library(parallel); library(profvis);
+library(tictoc)
 
 ## Sourcing functions
 source("functions/model2.R")
@@ -50,25 +51,35 @@ observed_incidence <- synthetic_data$result %>%
   group_by(time) %>%
   summarise(daily_incidence = sum(incidence))
 observed_data <- observed_incidence$daily_incidence
+# start_date <- as.Date("2021-01-01")
+# observed_incidence$date <- start_date + observed_incidence$time - 1
+# observed_incidence <- observed_incidence %>%
+#   select(date, time, daily_incidence)
 plot(observed_data)
 
 ## Parameter scan for diff R0 values
 iterations <- 10
 cores <- 10
-R0_scan <- c(1.5, 2, 3, 4, 5, 6)
-start_date_scan <- c(1, 3, 5, 7, 9)
-particles <- 250
+R0_scan <- c(1.5, 2, 2.5, 3, 3.5, 4, 5, 6)
+start_date_scan <- c(-10, -5, 1, 5, 10)
+particles <- 500
 
 loglikelihood_matrix <- array(data = NA, dim = c(iterations, length(R0_scan), length(start_date_scan)))
 final_size_matrix <- array(data = NA, dim = c(iterations, length(R0_scan), length(start_date_scan)))
-output_matrix <- array(data = NA, dim = c(iterations, length(R0_scan), length(start_date_scan), length(observed_data)))
+output_matrix <- array(data = NA, dim = c(iterations, length(R0_scan), length(start_date_scan), length(observed_data) + abs(start_date_scan)[1]))
 
 for (i in 1:length(R0_scan)) {
   
   for (j in 1:length(start_date_scan)) {
     
     start_date <- start_date_scan[j]
-    data <- observed_incidence[start_date:nrow(observed_incidence), ]
+    if (start_date < 1) {
+      data <- rbind(data.frame(time = rep(NA_real_, abs(start_date)), daily_incidence = rep(0, abs(start_date))),
+                    observed_incidence)
+      data$time <- 1:nrow(data)
+    } else {
+      data <- observed_incidence[start_date:nrow(observed_incidence), ]
+    }
     steps <- nrow(data) / dt
     misc <- list(seed = rpois(particles, 100000), 
                  steps = steps, 
@@ -110,8 +121,15 @@ for (i in 1:length(R0_scan)) {
     
     parallel::stopCluster(cl)
     
+    if (start_date < 0) {
+      padding_zeroes <- rep(0, abs(start_date_scan[1]) - abs(start_date))
+    } else if (start_date == 1) {
+      padding_zeroes <- rep(0, abs(start_date_scan[1]) - abs(start_date) + 1)
+    } else {
+      padding_zeroes <- rep(0, abs(start_date_scan[1]) + abs(start_date) - 1)
+    }
     for (k in 1:iterations) {
-      output_matrix[k, i, j, ] <- c(rep(0, start_date - 1), result_parallel[[k]]$deaths_trajectory)
+      output_matrix[k, i, j, ] <- c(padding_zeroes, result_parallel[[k]]$deaths_trajectory)
       final_size_matrix[k, i, j] <- sum(result_parallel[[k]]$deaths_trajectory)
       loglikelihood_matrix[k, i, j] <- result_parallel[[k]]$loglikelihood
     }
@@ -124,22 +142,39 @@ for (i in 1:length(R0_scan)) {
 
 }
 
+saveRDS(list(output = output_matrix, 
+             final_size = final_size_matrix, 
+             loglike = loglikelihood_matrix),
+        "synthetic_test_scan.rds")
 
+dim(loglikelihood_matrix)
+
+x <- apply(loglikelihood_matrix, c(2, 3), mean)
+colnames(x) <- paste0("start=", start_date_scan)
+rownames(x) <- paste0("R0=", R0_scan)
 
 colors37 <- c("#466791","#60bf37","#953ada","#4fbe6c","#ce49d3","#a7b43d","#5a51dc","#d49f36","#552095","#507f2d","#db37aa","#84b67c","#a06fda","#df462a","#5b83db","#c76c2d","#4f49a3","#82702d","#dd6bbb","#334c22","#d83979","#55baad","#dc4555","#62aad3","#8c3025","#417d61","#862977","#bba672","#403367","#da8a6d","#a79cd4","#71482c","#c689d0","#6b2940","#d593a7","#895c8b","#bd5975")
-par(mfrow = c(3, 4), mar = c(2, 2, 2, 2))
+par(mfrow = c(length(R0_scan), length(start_date_scan)), mar = c(2, 2, 2, 2))
 for (i in 1:length(R0_scan)) {
-  for (j in 1:iterations) {
-    if (j == 1) {
-      plot(output_matrix[j, i, ], type = "l", col = adjustcolor(colors37[i], alpha.f = 0.2),
-           ylim = c(0, max(c(observed_data, output_matrix[, i, ]))),
-           main = paste0("R0 = ", R0_scan[i], ", loglik = ", 
-                         round(apply(loglikelihood_matrix, 2, mean)[i], 2)),
-           ylab = "", xlab = "")
-    } else {
-      lines(output_matrix[j, i, ], type = "l", col = adjustcolor(colors37[i], alpha.f = 0.2))
+  for (j in 1:length(start_date_scan)) {
+    for (k in 1:iterations) {
+      if (k == 1) {
+        plot(output_matrix[k, i, j, ], type = "l", col = adjustcolor(colors37[i], alpha.f = 0.2),
+             ylim = c(0, max(c(observed_data, output_matrix[, i, , ]))),
+             main = paste0("R0 = ", R0_scan[i], ", loglik = ", 
+                           round(apply(loglikelihood_matrix, c(2, 3), mean)[i, j], 2)),
+             ylab = "", xlab = "")
+      } else {
+        lines(output_matrix[k, i, j, ], type = "l", col = adjustcolor(colors37[i], alpha.f = 0.2))
+      }
     }
+    if (start_date_scan[j] < 0) {
+      padding_zeroes <- rep(0, abs(start_date_scan[1]) - abs(start_date_scan[j]))
+    } else if (start_date_scan[j] == 1) {
+      padding_zeroes <- rep(0, abs(start_date_scan[1]) - abs(start_date_scan[j]) + 1)
+    } else {
+      padding_zeroes <- rep(0, abs(start_date_scan[1]) + abs(start_date_scan[j]) - 1)
+    }
+    points(c(padding_zeroes, observed_data), pch = 20, col = "black", cex = 1)
   }
-  points(observed_data, pch = 20, col = "black", cex = 1)
 }
-

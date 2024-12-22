@@ -12,14 +12,21 @@ r_loglike <- function(params, data, misc) {
   # Set.seed
   misc$seed <- rpois(misc$particles, 1000000)
   
+  ## Converting R0 to model input beta
+  beta_sim <- params["R0"] * misc$gamma / misc$N
+  
   ## Creating storage for model outputs
-  storage_list <- vector(mode = "list", length = misc$particles)
   deaths_df <- array(data = NA, dim = c(misc$particles, length(data$time)))
   deaths_df2 <- array(data = NA, dim = c(misc$particles, length(data$time)))
   loglikelihood <- vector(mode = "numeric", length = length(data$time))
   
-  ## Converting R0 to model input beta
-  beta_sim <- params["R0"] * misc$gamma / misc$N
+  storage_list <- vector(mode = "list", length = misc$particles)
+  num_rows_output <- length(data$time) * (1 / misc$dt)
+  num_cols_output <- 3
+  for (j in seq_len(misc$particles)) {
+    storage_list[[j]] <- list(output = matrix(NA_real_, nrow = num_rows_output, ncol = num_cols_output), 
+                              state = NULL)
+  }
   
   ## Looping over timepoints
   for (i in 1:length(data$time)) {
@@ -61,8 +68,11 @@ r_loglike <- function(params, data, misc) {
                                 death_observation_gamma_shape = 1, 
                                 death_observation_gamma_rate = misc$death_observation_gamma_rate,
                                 state = storage_list[[j]]$state)
-        storage_list[[j]]$output <- rbind(storage_list[[j]]$output, 
-                                          temp$result[(1 + nrow(temp$result) - 1/misc$dt):nrow(temp$result), ])
+        
+        start_row <- (i - 1) * (1 / misc$dt) + 1
+        end_row   <- i * (1 / misc$dt)
+        storage_list[[j]]$output[start_row:end_row, ] <- temp$result[(1 + nrow(temp$result) - (1 / misc$dt)):nrow(temp$result), ]
+        
       }
       storage_list[[j]]$state <- temp$state
       
