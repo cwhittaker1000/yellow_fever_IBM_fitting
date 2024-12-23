@@ -26,7 +26,7 @@ epi_curve <- incidence::incidence(horto_df$date_collection)
 plot(epi_curve)
 
 # Generating incidence data and cutting off first 4 infections
-start_date <- as.Date("2017-11-12")
+start_date <- as.Date("2017-11-10")
 horto_df_fitting <- horto_df %>%
   filter(date_collection > start_date) %>%
   group_by(date_collection) %>%
@@ -49,11 +49,11 @@ initial_infections <- 1
 gamma <- 1 / (infectious_period_gamma_shape / infectious_period_gamma_rate)
 
 ## Parameters for initial particle filtering to identify parameter regime of highest likelihood
-R0_scan <- c(4, 5, 6, 7, 8, 9, 10, 11, 12, 13)
-start_date_scan <- as.Date(c("2017-11-12", "2017-11-14", "2017-11-16", "2017-11-18", "2017-11-20",
-                             "2017-11-22", "2017-11-24", "2017-11-26", "2017-11-28", "2017-11-30"))
-iterations <- 10
-particles <- 500
+R0_scan <- c(4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16)
+start_date_scan <- as.Date(c("2017-11-10","2017-11-12", "2017-11-14", "2017-11-16", "2017-11-18", "2017-11-20",
+                             "2017-11-22", "2017-11-24", "2017-11-26", "2017-11-28", "2017-11-30", "2017-12-02"))
+iterations <- 20
+particles <- 600
 cores <- 10
 
 loglikelihood_matrix <- array(data = NA, dim = c(iterations, length(R0_scan), length(start_date_scan)))
