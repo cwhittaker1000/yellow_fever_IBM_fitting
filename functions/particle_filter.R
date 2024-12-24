@@ -78,16 +78,9 @@ r_loglike <- function(params, data, misc) {
       storage_list[[j]]$state <- temp$state
       
       # Calculating the number of deaths that occur in that timestep
-      curr_timestep_Dobs <- max(temp$result$Dobs_count[(1 + nrow(temp$result) - 1/misc$dt):nrow(temp$result)])
-      if (i == 1) {
-        prev_timestep_Dobs <- 0
-      } else {
-        prev_timestep_Dobs <- storage_list[[j]]$output$Dobs_count[(nrow(temp$result) - 1/misc$dt)] # get the last timepoint of the previous
-      }
-      temp_num_deaths_timestep <- curr_timestep_Dobs - prev_timestep_Dobs
+      temp_num_deaths_timestep <- sum(temp$result$D_obs_new[(1 + nrow(temp$result) - 1/misc$dt):nrow(temp$result)])
       num_deaths_timestep_particle[j] <- temp_num_deaths_timestep
       deaths_df[j, i] <- temp_num_deaths_timestep
-      
     }
     
     ## Generating weights for each of the particles
@@ -101,7 +94,6 @@ r_loglike <- function(params, data, misc) {
     storage_list <- storage_list[resampled_indices]
     deaths_df2[, i] <- num_deaths_timestep_particle[resampled_indices]
     loglikelihood[i] <- log(mean(eval_loglik$raw_weights))
-
   }
   
   ## One last round of resampling
