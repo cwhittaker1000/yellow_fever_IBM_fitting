@@ -16,7 +16,7 @@ df <- tibble(id = seq_along(days_virus_post_infection),
   mutate(days_death_post_infection = if_else(is.na(days_death_post_infection), -99, days_death_post_infection))
 
 ## Fitting the time between infection and death
-model <- stan_model("analyses/0_IBM_inputEstimation/models/laemmert_monkey_death.stan")
+model <- stan_model("2_YFV_natural_history_parameter_estimation_real/models/laemmert_monkey_death.stan")
 data_stan <- list(N = nrow(df),
                   days = df$days_death_post_infection,
                   truncated = df$death_truncated,
@@ -28,7 +28,7 @@ data_stan <- list(N = nrow(df),
 fit <- sampling(model, data=data_stan, iter=2000, chains=4)
 hist(rstan::extract(fit, "days_simulated")[[1]], breaks = 50)
 summary(fit)
-saveRDS(fit, "analyses/0_IBM_inputEstimation/outputs/infection_deathDist_stanFit.rds")
+saveRDS(fit, "outputs/infection_deathDist_stanFit.rds")
 
 ## Comparing fit to empirical
 days_sim <- rstan::extract(fit, "days_simulated")[[1]]
@@ -41,7 +41,7 @@ df_both <- df_sim %>%
   bind_rows(df_real)
 a <- ggplot(df_both, aes(x=days_death_post_infection, colour=type)) +
   geom_density() +
-  geom_vline(xintercept = 10, linetype=2) +
+  # geom_vline(xintercept = 10, linetype=2) +
   scale_x_continuous(limits = c(0, 15)) +
   scale_color_brewer("Data", palette = "Dark2") +
   xlab("Days from exposure to death") +
@@ -63,7 +63,7 @@ data_stan <- list(N = nrow(df),
 fit <- sampling(model, data=data_stan, iter=2000, chains=4)
 hist(rstan::extract(fit, "days_simulated")[[1]], breaks = 50)
 summary(fit)
-saveRDS(fit, "analyses/0_IBM_inputEstimation/outputs/exposure_infectiousDist_stanFit.rds")
+saveRDS(fit, "outputs/exposure_infectiousDist_stanFit.rds")
 
 ## Comparing fit to empirical
 days_sim <- rstan::extract(fit, "days_simulated")[[1]]
@@ -76,7 +76,7 @@ df_both <- df_sim %>%
   bind_rows(df_real)
 b <- ggplot(df_both, aes(x=days_virus_post_infection, colour=type)) +
   geom_density() +
-  geom_vline(xintercept = 10, linetype=2) +
+  # geom_vline(xintercept = 10, linetype=2) +
   scale_x_continuous(limits = c(0, 15)) +
   scale_color_brewer("Data", palette = "Dark2") +
   xlab("Days from exposure to infectious") +
@@ -98,7 +98,7 @@ data_stan <- list(N = nrow(df),
 fit <- sampling(model, data=data_stan, iter=2000, chains=4)
 hist(rstan::extract(fit, "days_simulated")[[1]], breaks = 50)
 summary(fit)
-saveRDS(fit, "analyses/0_IBM_inputEstimation/outputs/infectious_deathDist_stanFit.rds")
+saveRDS(fit, "outputs/infectious_deathDist_stanFit.rds")
 
 ## Comparing fit to empirical
 days_sim <- rstan::extract(fit, "days_simulated")[[1]]
@@ -111,7 +111,7 @@ df_both <- df_sim %>%
   bind_rows(df_real)
 c <- ggplot(df_both, aes(x=days_death_post_virus, colour=type)) +
   geom_density() +
-  geom_vline(xintercept = 10, linetype=2) +
+  # geom_vline(xintercept = 10, linetype=2) +
   scale_x_continuous(limits = c(0, 15)) +
   scale_color_brewer("Data", palette = "Dark2") +
   xlab("Days from infectious to death") +
@@ -121,4 +121,10 @@ median(df$days_death_post_virus)
 mean(days_sim)
 median(days_sim)
 
-cowplot::plot_grid(a, b, c, nrow = 1)
+plot_legend <- cowplot::get_legend(c)
+
+cowplot::plot_grid(a + theme(legend.position = "none"), 
+                   b + theme(legend.position = "none"),
+                   c + theme(legend.position = "none"),
+                   plot_legend, nrow = 1, rel_widths = c(1, 1, 1, 0.2), 
+                   labels = c("A", "B", "C"))
