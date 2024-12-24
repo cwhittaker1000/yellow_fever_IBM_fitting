@@ -59,13 +59,18 @@ run_simulation2 <- function(seed, steps, dt, N, initial_infections, death_obs_pr
       import_infections$set_difference(local_infections)
       if (import_infections$size() > 0) {
         num_to_import <- min(num_imports, import_infections$size())
-        # health_render$render('num_to_import', num_to_import, t)
+        if (is.na(num_to_import)) {
+          num_to_import <- 0
+        }
+        health_render$render('num_to_import', num_to_import, t)
         import_infections$choose(num_to_import)
       }
       newly_infected <- local_infections
       newly_infected$or(import_infections)
       health$queue_update(value = "E",index = newly_infected)      # updating the health categorical variable
     } else {
+      num_to_import <- 0
+      health_render$render('num_to_import', num_to_import, t)
       health$queue_update(value = "E",index = local_infections)    # updating the health categorical variable
     }
   }
@@ -147,7 +152,7 @@ run_simulation2 <- function(seed, steps, dt, N, initial_infections, death_obs_pr
   health_render_process <- categorical_count_renderer_process(
     renderer = health_render,
     variable = health,
-    categories =  c("D_unobs", "Dobs")
+    categories =  c("Dobs")
   )
   
   ## Run simulation loop

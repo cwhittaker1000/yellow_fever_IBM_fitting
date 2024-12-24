@@ -18,6 +18,11 @@ EIP_gamma_fit <- readRDS("outputs/EIP_adultMice_gammaParams_25degrees.rds")
 EIP_gamma_shape <- EIP_gamma_fit$gamma_a
 EIP_gamma_rate <- EIP_gamma_fit$gamma_b
 
+exposure_death_delay <- round((latent_period_gamma_shape / latent_period_gamma_rate) + 
+  (infectious_period_gamma_shape / infectious_period_gamma_rate) +
+  (EIP_gamma_shape / EIP_gamma_rate) +
+  (1 / death_observation_gamma_rate))
+
 # Loading in and processing Horto/PEAL data for model fitting
 horto_df <- readRDS("data/processed_HortoData.rds") %>%
   filter(!is.na(zone_peal)) %>%
@@ -26,7 +31,7 @@ epi_curve <- incidence::incidence(horto_df$date_collection)
 plot(epi_curve)
 
 # Generating incidence data and cutting off first 4 infections
-start_date <- as.Date("2017-11-02")
+start_date <- as.Date("2017-10-25")
 horto_df_fitting <- horto_df %>%
   filter(date_collection > start_date) %>%
   group_by(date_collection) %>%
@@ -47,17 +52,19 @@ death_obs_prop <- N_obs / N
 dt <- 0.2
 initial_infections <- 1
 gamma <- 1 / (infectious_period_gamma_shape / infectious_period_gamma_rate)
+importations <- 7 # from the genomic data
+importation_last_date <- max(horto_df_fitting$date_collection) - exposure_death_delay # upper bound assumed to be 1 generation time before the final monkey death
 
 ## Parameters for initial particle filtering to identify parameter regime of highest likelihood
 R0_scan <- c(3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20)
-start_date_scan <- as.Date(c("2017-11-02", "2017-11-04", "2017-11-06", "2017-11-08", "2017-11-10", "2017-11-12", 
-                             "2017-11-14", "2017-11-16", "2017-11-18", "2017-11-20", "2017-11-22", "2017-11-24", 
-                             "2017-11-26", "2017-11-28", "2017-11-30", "2017-12-02"))
+start_date_scan <- start_date + seq(0, 30, 2)
+
 iterations <- 10
 particles <- 500
 cores <- 10
 
 loglikelihood_matrix <- array(data = NA, dim = c(iterations, length(R0_scan), length(start_date_scan)))
+importations_matrix <- array(data = NA, dim = c(iterations, length(R0_scan), length(start_date_scan)))
 final_size_matrix <- array(data = NA, dim = c(iterations, length(R0_scan), length(start_date_scan)))
 output_matrix <- array(data = NA, dim = c(iterations, length(R0_scan), length(start_date_scan), length(horto_df_fitting$count)))
 
@@ -82,6 +89,13 @@ if (fresh_run) {
       steps <- nrow(data) / dt
       days <- nrow(data)
       
+      # Calculating the importation rate - note that given the epidemic goes to extinction, we really
+      # need to calculate it up to 1 full generation time before the last death (i.e. the time when that last monkey was infected 
+      # in our model) - final date in importation_date_range is the actual time when all the susceptibles are depleted
+      importation_date_range <- data %>%
+        filter(date_collection <= importation_last_date)
+      importation_rate <- importations / nrow(importation_date_range) 
+      
       # Defining the misc list that supports running the particle filter
       misc <- list(seed = simulation_seeds[i, j,  ], 
                    steps = steps, 
@@ -89,7 +103,7 @@ if (fresh_run) {
                    particles = particles,
                    dt = dt, 
                    N = N, 
-                   importation_rate = 0,
+                   importation_rate = importation_rate,
                    initial_infections = initial_infections, 
                    death_obs_prop = death_obs_prop, 
                    initial_run = TRUE, 
@@ -127,6 +141,7 @@ if (fresh_run) {
         output_matrix[k, i, j, ] <- c(padding_zeroes, result_parallel[[k]]$deaths_trajectory)
         final_size_matrix[k, i, j] <- sum(result_parallel[[k]]$deaths_trajectory)
         loglikelihood_matrix[k, i, j] <- result_parallel[[k]]$loglikelihood
+        importations_matrix[k, i, j] <- result_parallel[[k]]$importations
       }
       
       print(c("j = ", j))

@@ -23,7 +23,7 @@ r_loglike <- function(params, data, misc) {
   
   storage_list <- vector(mode = "list", length = misc$particles)
   num_rows_output <- length(data$time) * (1 / misc$dt)
-  num_cols_output <- 3
+  num_cols_output <- 4
   for (j in seq_len(misc$particles)) {
     storage_list[[j]] <- list(output = matrix(NA_real_, nrow = num_rows_output, ncol = num_cols_output), 
                               state = NULL)
@@ -33,7 +33,7 @@ r_loglike <- function(params, data, misc) {
   for (i in 1:length(data$time)) {
     
     num_deaths_timestep_particle <- vector(mode = "double", length = misc$particles)
-    
+
     ## Looping over particles
     for (j in 1:misc$particles) {
       
@@ -101,7 +101,7 @@ r_loglike <- function(params, data, misc) {
     storage_list <- storage_list[resampled_indices]
     deaths_df2[, i] <- num_deaths_timestep_particle[resampled_indices]
     loglikelihood[i] <- log(mean(eval_loglik$raw_weights))
-    
+
   }
   
   ## One last round of resampling
@@ -109,7 +109,8 @@ r_loglike <- function(params, data, misc) {
   deaths_trajectory <- deaths_df2[final_sampling_index, ]
 
   ## Returning output
-  return(list(deaths_trajectory = deaths_trajectory, loglikelihood = sum(loglikelihood)))
+  return(list(deaths_trajectory = deaths_trajectory, loglikelihood = sum(loglikelihood), 
+              importations = sum(storage_list[[final_sampling_index]]$output$num_to_import, na.rm = TRUE)))
   
 }
 

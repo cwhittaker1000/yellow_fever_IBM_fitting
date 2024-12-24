@@ -27,8 +27,35 @@ importation_rate <- 7 / 32 # the actual time when all the susceptibles are deple
 dt <- 0.2
 steps <- days / dt
 iterations <- 100
+
+x <- run_simulation2(seed = rnbinom(n = 1, mu = 10^5, size = 1), 
+                     steps = steps,
+                     dt = dt,
+                     N = N, 
+                     initial_infections = 0, 
+                     death_obs_prop = 1, 
+                     beta = 0.01, 
+                     initial_run = TRUE, 
+                     overall_run_length = steps, 
+                     importation_rate = importation_rate,
+                     EIP_gamma_shape = EIP_gamma_shape,
+                     EIP_gamma_rate = EIP_gamma_rate,
+                     latent_period_gamma_shape = latent_period_gamma_shape, 
+                     latent_period_gamma_rate = latent_period_gamma_rate,
+                     infectious_period_gamma_shape = infectious_period_gamma_shape, 
+                     infectious_period_gamma_rate = infectious_period_gamma_rate,
+                     death_observation_gamma_shape = 1, 
+                     death_observation_gamma_rate = death_observation_gamma_rate,
+                     state = NULL)
+
+plot(x$result$num_to_import)
+plot(x$result$Dobs_count)
+
+
 possible_importation_count <- vector(mode = "numeric", length = iterations)
 actual_importation_count <- vector(mode = "numeric", length = iterations)
+
+
 for (i in 1:iterations) {
   x <- run_simulation2(seed = rnbinom(n = 1, mu = 10^5, size = 1), 
                        steps = steps,
