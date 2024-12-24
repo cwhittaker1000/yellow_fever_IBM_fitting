@@ -14,7 +14,7 @@ latent_period_gamma_rate <- mean(rstan::extract(latent_period_fit, "b")[[1]]) # 
 infectious_period_fit <- readRDS("outputs/infectious_deathDist_stanFit.rds")
 infectious_period_gamma_shape <- mean(rstan::extract(infectious_period_fit, "a")[[1]]) # note exp used here and gamma below, but if shape set to 1, then is an exponential
 infectious_period_gamma_rate <- mean(rstan::extract(infectious_period_fit, "b")[[1]]) # note exp used here and gamma below, but if shape set to 1, then is an exponential
-EIP_gamma_fit <- readRDS("outputs/EIP_adultMice_gammaParams.rds")
+EIP_gamma_fit <- readRDS("outputs/EIP_adultMice_gammaParams_25degrees.rds")
 EIP_gamma_shape <- EIP_gamma_fit$gamma_a
 EIP_gamma_rate <- EIP_gamma_fit$gamma_b
 

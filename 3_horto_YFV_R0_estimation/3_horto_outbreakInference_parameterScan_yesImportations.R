@@ -14,17 +14,9 @@ latent_period_gamma_rate <- mean(rstan::extract(latent_period_fit, "b")[[1]]) # 
 infectious_period_fit <- readRDS("outputs/infectious_deathDist_stanFit.rds")
 infectious_period_gamma_shape <- mean(rstan::extract(infectious_period_fit, "a")[[1]]) # note exp used here and gamma below, but if shape set to 1, then is an exponential
 infectious_period_gamma_rate <- mean(rstan::extract(infectious_period_fit, "b")[[1]]) # note exp used here and gamma below, but if shape set to 1, then is an exponential
-EIP_gamma_fit <- readRDS("outputs/EIP_adultMice_gammaParams.rds")
+EIP_gamma_fit <- readRDS("outputs/EIP_adultMice_gammaParams_25degrees.rds")
 EIP_gamma_shape <- EIP_gamma_fit$gamma_a
 EIP_gamma_rate <- EIP_gamma_fit$gamma_b
-
-delay_infection_death <- (1 / death_observation_gamma_rate) + 
-  (latent_period_gamma_shape / latent_period_gamma_rate) +
-  (infectious_period_gamma_shape / infectious_period_gamma_rate)
-delay_infection_death_EIP <- delay_infection_death +
-  (EIP_gamma_shape / EIP_gamma_rate)
-as.Date("2017-12-25") - round(delay_infection_death)
-as.Date("2017-12-25") - round(delay_infection_death_EIP)
 
 # Loading in and processing Horto/PEAL data for model fitting
 horto_df <- readRDS("data/processed_HortoData.rds") %>%
@@ -34,7 +26,7 @@ epi_curve <- incidence::incidence(horto_df$date_collection)
 plot(epi_curve)
 
 # Generating incidence data and cutting off first 4 infections
-start_date <- as.Date("2017-11-10")
+start_date <- as.Date("2017-11-02")
 horto_df_fitting <- horto_df %>%
   filter(date_collection > start_date) %>%
   group_by(date_collection) %>%
@@ -57,11 +49,12 @@ initial_infections <- 1
 gamma <- 1 / (infectious_period_gamma_shape / infectious_period_gamma_rate)
 
 ## Parameters for initial particle filtering to identify parameter regime of highest likelihood
-R0_scan <- c(4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20)
-start_date_scan <- as.Date(c("2017-11-10","2017-11-12", "2017-11-14", "2017-11-16", "2017-11-18", "2017-11-20",
-                             "2017-11-22", "2017-11-24", "2017-11-26", "2017-11-28", "2017-11-30", "2017-12-02"))
-iterations <- 20
-particles <- 600
+R0_scan <- c(3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20)
+start_date_scan <- as.Date(c("2017-11-02", "2017-11-04", "2017-11-06", "2017-11-08", "2017-11-10", "2017-11-12", 
+                             "2017-11-14", "2017-11-16", "2017-11-18", "2017-11-20", "2017-11-22", "2017-11-24", 
+                             "2017-11-26", "2017-11-28", "2017-11-30", "2017-12-02"))
+iterations <- 10
+particles <- 500
 cores <- 10
 
 loglikelihood_matrix <- array(data = NA, dim = c(iterations, length(R0_scan), length(start_date_scan)))
@@ -72,7 +65,7 @@ overall_seed <- 10
 set.seed(overall_seed)
 simulation_seeds <- array(data = rnbinom(n = iterations * length(R0_scan) * length(start_date_scan), mu = 10^6, size = 1), 
                           dim = c(length(R0_scan), length(start_date_scan), iterations))
-fresh_run <- FALSE
+fresh_run <- TRUE
 if (fresh_run) {
   
   ## Looping through R0
@@ -87,6 +80,7 @@ if (fresh_run) {
         filter(date_collection >= start_date) %>%
         rename(daily_incidence = count)
       steps <- nrow(data) / dt
+      days <- nrow(data)
       
       # Defining the misc list that supports running the particle filter
       misc <- list(seed = simulation_seeds[i, j,  ], 
@@ -95,6 +89,7 @@ if (fresh_run) {
                    particles = particles,
                    dt = dt, 
                    N = N, 
+                   importation_rate = 0,
                    initial_infections = initial_infections, 
                    death_obs_prop = death_obs_prop, 
                    initial_run = TRUE, 
@@ -143,11 +138,11 @@ if (fresh_run) {
   }
   
   saveRDS(list(output = output_matrix, final_size = final_size_matrix, loglike = loglikelihood_matrix),
-          "3_horto_YFV_R0_estimation/updated_initial_parameterScan_hortoEstimation.rds")
+          "3_horto_YFV_R0_estimation/parameterScan_hortoEstimation_YesImportations.rds")
   
 } else {
   
-  temp <- readRDS("3_horto_YFV_R0_estimation/updated_initial_parameterScan_hortoEstimation.rds")
+  temp <- readRDS("3_horto_YFV_R0_estimation/parameterScan_hortoEstimation_YesImportations.rds")
   loglikelihood_matrix <- temp$loglike
   output_matrix <- temp$output
 }

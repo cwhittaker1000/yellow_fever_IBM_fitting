@@ -29,13 +29,46 @@ run_simulation2 <- function(seed, steps, dt, N, initial_infections, death_obs_pr
   
   
   ## Exposure process moving individuals S->E
+  # exposure_process <- function(t){
+  #   I <- health$get_index_of("I")
+  #   I_inf <- I$size()
+  #   foi <- beta * I_inf                                                   # calculate FOI
+  #   S <- health$get_index_of("S")                                         # get index of all monkeys still in susceptible state
+  #   S$sample(rate = pexp(q = (foi + (importation_rate / S$size()) * dt))) # sampling those who are infected (move to E) in this timestep, either through other PEL monkeys or imported infections
+  #   health$queue_update(value = "E",index = S)                            # updating the health categorical variable
+  # }
+  
   exposure_process <- function(t){
+    
+    ## Getting the index of all those still susceptible
+    S_all <- health$get_index_of("S")  # get index of all monkeys still in susceptible state
+    
+    ## Infections from other PEL monkeys
     I <- health$get_index_of("I")
-    I_inf <- I$size()
-    foi <- beta * I_inf                                                   # calculate FOI
-    S <- health$get_index_of("S")                                         # get index of all monkeys still in susceptible state
-    S$sample(rate = pexp(q = (foi + (importation_rate / S$size()) * dt))) # sampling those who are infected (move to E) in this timestep, either through other PEL monkeys or imported infections
-    health$queue_update(value = "E",index = S)                            # updating the health categorical variable
+    I_inf <- I$size()                     # calculating the number of infectious monkeys contributing to the FOI
+    foi <- beta * I_inf                   # calculate FOI experienced by susceptible monkeys
+    p_inf <- 1 - exp(-foi * dt)           # converting the FOI (instantaneous rate) to a probability of being infected in the timestep
+    local_infections <- S_all$copy()      # copy the susceptible set
+    local_infections$sample(rate = p_inf) # pick who gets infected locally
+    
+    ## Infections representing importations
+    num_imports <- rpois(1, importation_rate * dt)
+    health_render$render('num_imports', num_imports, t)
+    if (num_imports > 0) {
+      import_infections <- S_all$copy()
+      import_infections$set_difference(local_infections)
+      # print(import_infections$size())
+      if (import_infections$size() > 0) {
+        num_to_import <- min(num_imports, import_infections$size())
+        health_render$render('num_to_import', num_to_import, t)
+        import_infections$choose(num_to_import)
+      }
+      newly_infected <- local_infections
+      newly_infected$or(import_infections)
+      health$queue_update(value = "E",index = newly_infected)      # updating the health categorical variable
+    } else {
+      health$queue_update(value = "E",index = local_infections)    # updating the health categorical variable
+    }
   }
   
   ## Define infection event and process to schedule moves from E->I
@@ -116,7 +149,7 @@ run_simulation2 <- function(seed, steps, dt, N, initial_infections, death_obs_pr
     renderer = health_render,
     variable = health,
     # categories =  c("S", "E", "I", "D", "D_unobs", "Dobs")
-    categories =  c("D_unobs", "Dobs")
+    categories =  c("S","D_unobs", "Dobs")
   )
   
   ## Run simulation loop
