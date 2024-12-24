@@ -6,9 +6,11 @@
 ## the I state represents
 
 run_simulation2 <- function(seed, steps, dt, N, initial_infections, death_obs_prop, 
-                            beta, initial_run, overall_run_length, latent_period_gamma_shape, 
+                            beta, initial_run, overall_run_length, 
+                            importation_rate,
                             EIP_gamma_shape,
-                            EIP_gamma_rate, 
+                            EIP_gamma_rate,
+                            latent_period_gamma_shape, 
                             latent_period_gamma_rate,
                             infectious_period_gamma_shape, 
                             infectious_period_gamma_rate,
@@ -30,10 +32,10 @@ run_simulation2 <- function(seed, steps, dt, N, initial_infections, death_obs_pr
   exposure_process <- function(t){
     I <- health$get_index_of("I")
     I_inf <- I$size()
-    foi <- beta * I_inf                                               # calculate FOI
-    S <- health$get_index_of("S")                                                     # get index of all monkeys still in susceptible state
-    S$sample(rate = pexp(q = foi * dt))                               # sampling those who are infected (move to E) in this timestep
-    health$queue_update(value = "E",index = S)                                        # updating the health categorical variable
+    foi <- beta * I_inf                                                   # calculate FOI
+    S <- health$get_index_of("S")                                         # get index of all monkeys still in susceptible state
+    S$sample(rate = pexp(q = (foi + (importation_rate / S$size()) * dt))) # sampling those who are infected (move to E) in this timestep, either through other PEL monkeys or imported infections
+    health$queue_update(value = "E",index = S)                            # updating the health categorical variable
   }
   
   ## Define infection event and process to schedule moves from E->I

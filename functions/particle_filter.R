@@ -41,7 +41,7 @@ r_loglike <- function(params, data, misc) {
       if (i == 1) {
         temp <- run_simulation2(seed = misc$seed[j], steps = 1 / misc$dt, dt = misc$dt, N = misc$N, 
                                 initial_infections = misc$initial_infections, death_obs_prop = misc$death_obs_prop,
-                                beta = beta_sim,
+                                beta = beta_sim, importation_rate = misc$importation_rate,
                                 initial_run = TRUE, overall_run_length = misc$overall_run_length,
                                 latent_period_gamma_shape = misc$latent_period_gamma_shape, 
                                 EIP_gamma_shape = misc$EIP_gamma_shape,
@@ -58,7 +58,7 @@ r_loglike <- function(params, data, misc) {
       } else {
         temp <- run_simulation2(seed = misc$seed[j], steps = (i / misc$dt), dt = misc$dt, N = misc$N, 
                                 initial_infections = misc$initial_infections, death_obs_prop = misc$death_obs_prop, 
-                                beta = beta_sim, 
+                                beta = beta_sim, importation_rate = misc$importation_rate,
                                 initial_run = FALSE, overall_run_length = NA,
                                 latent_period_gamma_shape = misc$latent_period_gamma_shape, 
                                 EIP_gamma_shape = misc$EIP_gamma_shape,

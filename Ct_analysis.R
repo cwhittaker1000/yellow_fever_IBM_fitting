@@ -1,8 +1,12 @@
-library(rstan); library(dplyr)
+library(rstan); library(dplyr); library(ggplot2); library(ggridges); library(forcats)
 
 # read your CSV
-df <- read.csv("yellow_fever_IBM_fitting/tester_ct.csv") %>%
-  mutate(date = as.Date(notification_date, format = "%d/%m/%Y"))
+df <- read.csv("tester_ct.csv") %>%
+  mutate(date = as.Date(notification_date, format = "%d/%m/%Y")) %>%
+  mutate(decomposition.stage = ifelse(decomposition.stage == 0, 1, decomposition.stage))
+ggplot(df, aes(x = date, y = Ct)) +
+  geom_point(aes(col = factor(decomposition.stage))) +
+  geom_smooth()
 
 # create 'epidemic' binary
 df$epidemic <- ifelse(df$date < as.Date("2017-12-25"), 1, 0)
@@ -73,3 +77,34 @@ fit <- sampling(
   warmup = 250,
   seed = 150
 )
+
+posterior_samples <- rstan::extract(fit)
+posterior_df <- data.frame(
+  alpha = posterior_samples$alpha,
+  beta_epidemic = posterior_samples$beta_epidemic,
+  sigma = posterior_samples$sigma
+)
+if ("beta_stage" %in% names(posterior_samples)) {
+  beta_stage_df <- as.data.frame(posterior_samples$beta_stage)
+  colnames(beta_stage_df) <- paste0("beta_stage_", 2:(ncol(beta_stage_df) + 1))  # Stage 2 to K
+  posterior_df <- cbind(posterior_df, beta_stage_df)
+}
+posterior_long <- posterior_df %>%
+  tidyr::pivot_longer(cols = everything(), names_to = "Covariate", values_to = "Value") %>%
+  filter(Covariate %in% c("beta_epidemic", "beta_stage_2"))
+posterior_long <- posterior_long %>%
+  mutate(Covariate = recode(Covariate,
+                            beta_epidemic = "Epidemic\nIncreasing",
+                            beta_stage_2 = "Advanced\nDecomposition"))
+ggplot(posterior_long, aes(x = Value, y = fct_rev(factor(Covariate)))) +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "black", size = 0.8) +
+  geom_density_ridges(scale = 1, alpha = 0.7, fill = "#BA3F1D") +
+  labs(x = "Effect Size",
+       y = "") +
+  theme_bw() +
+  theme(axis.title.y = element_text(size = 12),
+        axis.title.x = element_text(size = 12),
+        plot.title = element_text(hjust = 0.5, face = "bold"),
+        axis.text.y = element_text(size = 10),
+        axis.text.x = element_text(size = 10))
+
