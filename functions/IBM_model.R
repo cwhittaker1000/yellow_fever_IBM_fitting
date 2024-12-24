@@ -53,14 +53,13 @@ run_simulation2 <- function(seed, steps, dt, N, initial_infections, death_obs_pr
     
     ## Infections representing importations
     num_imports <- rpois(1, importation_rate * dt)
-    health_render$render('num_imports', num_imports, t)
+    # health_render$render('num_imports', num_imports, t)
     if (num_imports > 0) {
       import_infections <- S_all$copy()
       import_infections$set_difference(local_infections)
-      # print(import_infections$size())
       if (import_infections$size() > 0) {
         num_to_import <- min(num_imports, import_infections$size())
-        health_render$render('num_to_import', num_to_import, t)
+        # health_render$render('num_to_import', num_to_import, t)
         import_infections$choose(num_to_import)
       }
       newly_infected <- local_infections
@@ -148,8 +147,7 @@ run_simulation2 <- function(seed, steps, dt, N, initial_infections, death_obs_pr
   health_render_process <- categorical_count_renderer_process(
     renderer = health_render,
     variable = health,
-    # categories =  c("S", "E", "I", "D", "D_unobs", "Dobs")
-    categories =  c("S","D_unobs", "Dobs")
+    categories =  c("D_unobs", "Dobs")
   )
   
   ## Run simulation loop
