@@ -86,7 +86,7 @@ r_loglike <- function(params, data, misc) {
     ## Generating weights for each of the particles
     num_deaths_timestep_particle2 <- deaths_df[, i]
     to_replace <- sum(num_deaths_timestep_particle2 == 0)
-    num_deaths_timestep_particle2[num_deaths_timestep_particle2 == 0] <- rexp(to_replace, rate = 1/1e-5) 
+    num_deaths_timestep_particle2[num_deaths_timestep_particle2 == 0] <- rexp(to_replace, rate = misc$exponential_noise_rate) 
     eval_loglik <- weight_particles(num_deaths_timestep_particle2, data$daily_incidence[i])
     
     ## Resampling particles using the weights

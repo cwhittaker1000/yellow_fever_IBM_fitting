@@ -106,6 +106,7 @@ if (fresh_run) {
                    importation_rate = importation_rate,
                    empirical_importations = importations,
                    transmission_type = "density_dependent", 
+                   exponential_noise_rate = 1/1e-5,
                    initial_infections = initial_infections, 
                    death_obs_prop = death_obs_prop, 
                    initial_run = TRUE, 
