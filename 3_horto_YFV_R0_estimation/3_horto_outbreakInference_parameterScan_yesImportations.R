@@ -68,11 +68,6 @@ importations_matrix <- array(data = NA, dim = c(iterations, length(R0_scan), len
 final_size_matrix <- array(data = NA, dim = c(iterations, length(R0_scan), length(start_date_scan)))
 output_matrix <- array(data = NA, dim = c(iterations, length(R0_scan), length(start_date_scan), length(horto_df_fitting$count)))
 
-loglikelihood_matrix[, 1:15, ] <- temp$loglike
-importations_matrix[, 1:15, ] <- temp$importations
-final_size_matrix[, 1:15, ] <- temp$final_size
-output_matrix[, 1:15, , ] <- temp$output
-
 overall_seed <- 10
 set.seed(overall_seed)
 simulation_seeds <- array(data = rnbinom(n = iterations * length(R0_scan) * length(start_date_scan), mu = 10^6, size = 1), 
@@ -81,7 +76,7 @@ fresh_run <- TRUE
 if (fresh_run) {
   
   ## Looping through R0
-  for (i in 16:length(R0_scan)) {
+  for (i in 1:length(R0_scan)) {
     
     ## Looping through the start dates
     for (j in 1:length(start_date_scan)) {
@@ -109,6 +104,8 @@ if (fresh_run) {
                    dt = dt, 
                    N = N, 
                    importation_rate = importation_rate,
+                   empirical_importations = importations,
+                   transmission_type = "density_dependent", 
                    initial_infections = initial_infections, 
                    death_obs_prop = death_obs_prop, 
                    initial_run = TRUE, 

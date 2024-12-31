@@ -41,7 +41,7 @@ r_loglike <- function(params, data, misc) {
       if (i == 1) {
         temp <- run_simulation2(seed = misc$seed[j], steps = 1 / misc$dt, dt = misc$dt, N = misc$N, 
                                 initial_infections = misc$initial_infections, death_obs_prop = misc$death_obs_prop,
-                                beta = beta_sim, importation_rate = misc$importation_rate,
+                                beta = beta_sim, transmission_type = misc$transmission_type, importation_rate = misc$importation_rate,
                                 initial_run = TRUE, overall_run_length = misc$overall_run_length,
                                 latent_period_gamma_shape = misc$latent_period_gamma_shape, 
                                 EIP_gamma_shape = misc$EIP_gamma_shape,
@@ -58,7 +58,7 @@ r_loglike <- function(params, data, misc) {
       } else {
         temp <- run_simulation2(seed = misc$seed[j], steps = (i / misc$dt), dt = misc$dt, N = misc$N, 
                                 initial_infections = misc$initial_infections, death_obs_prop = misc$death_obs_prop, 
-                                beta = beta_sim, importation_rate = misc$importation_rate,
+                                beta = beta_sim, transmission_type = misc$transmission_type, importation_rate = misc$importation_rate,
                                 initial_run = FALSE, overall_run_length = NA,
                                 latent_period_gamma_shape = misc$latent_period_gamma_shape, 
                                 EIP_gamma_shape = misc$EIP_gamma_shape,
@@ -99,10 +99,12 @@ r_loglike <- function(params, data, misc) {
   ## One last round of resampling
   final_sampling_index <- sample(x = 1:misc$particles, size = 1, prob = eval_loglik$normalised_weights)
   deaths_trajectory <- deaths_df2[final_sampling_index, ]
+  importations <- sum(storage_list[[final_sampling_index]]$output$num_to_import, na.rm = TRUE)
 
   ## Returning output
-  return(list(deaths_trajectory = deaths_trajectory, loglikelihood = sum(loglikelihood), 
-              importations = sum(storage_list[[final_sampling_index]]$output$num_to_import, na.rm = TRUE)))
+  return(list(deaths_trajectory = deaths_trajectory, 
+              loglikelihood = sum(loglikelihood) + dpois(x = importations, lambda = misc$empirical_importations, log = TRUE), 
+              importations = importations))
   
 }
 
