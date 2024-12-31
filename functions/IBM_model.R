@@ -6,7 +6,7 @@
 ## the I state represents
 
 run_simulation2 <- function(seed, steps, dt, N, initial_infections, death_obs_prop, 
-                            beta, initial_run, overall_run_length, 
+                            beta, initial_run, overall_run_length, transmission_type,
                             importation_rate,
                             EIP_gamma_shape,
                             EIP_gamma_rate,
@@ -21,6 +21,11 @@ run_simulation2 <- function(seed, steps, dt, N, initial_infections, death_obs_pr
   ## Setting the seed
   set.seed(seed)
   
+  ## Defining transmission type
+  if (!(transmission_type %in% c("frequency_dependent", "density_dependent"))) {
+    stop("specify transmission_type correctly")
+  } 
+  
   ## Define disease states
   health <- CategoricalVariable$new(categories = c("S", "E", "I", "D", "D_unobs", "Dobs"),
                                     initial_values = c(rep("S", N - initial_infections), 
@@ -29,51 +34,85 @@ run_simulation2 <- function(seed, steps, dt, N, initial_infections, death_obs_pr
   
   
   ## Exposure process moving individuals S->E
-  # exposure_process <- function(t){
-  #   I <- health$get_index_of("I")
-  #   I_inf <- I$size()
-  #   foi <- beta * I_inf                                                   # calculate FOI
-  #   S <- health$get_index_of("S")                                         # get index of all monkeys still in susceptible state
-  #   S$sample(rate = pexp(q = (foi + (importation_rate / S$size()) * dt))) # sampling those who are infected (move to E) in this timestep, either through other PEL monkeys or imported infections
-  #   health$queue_update(value = "E",index = S)                            # updating the health categorical variable
-  # }
-  
-  exposure_process <- function(t){
-    
-    ## Getting the index of all those still susceptible
-    S_all <- health$get_index_of("S")  # get index of all monkeys still in susceptible state
-    
-    ## Infections from other PEL monkeys
-    I <- health$get_index_of("I")
-    I_inf <- I$size()                     # calculating the number of infectious monkeys contributing to the FOI
-    foi <- beta * I_inf                   # calculate FOI experienced by susceptible monkeys
-    p_inf <- 1 - exp(-foi * dt)           # converting the FOI (instantaneous rate) to a probability of being infected in the timestep
-    local_infections <- S_all$copy()      # copy the susceptible set
-    local_infections$sample(rate = p_inf) # pick who gets infected locally
-    
-    ## Infections representing importations
-    num_imports <- rpois(1, importation_rate * dt)
-    # health_render$render('num_imports', num_imports, t)
-    if (num_imports > 0) {
-      import_infections <- S_all$copy()
-      import_infections$set_difference(local_infections)
-      if (import_infections$size() > 0) {
-        num_to_import <- min(num_imports, import_infections$size())
-        if (is.na(num_to_import)) {
-          num_to_import <- 0
+  if (transmission_type == "density_dependent") {
+    exposure_process <- function(t){
+      
+      ## Getting the index of all those still susceptible
+      S_all <- health$get_index_of("S")  # get index of all monkeys still in susceptible state
+      
+      ## Infections from other PEL monkeys
+      I <- health$get_index_of("I")
+      I_inf <- I$size()                     # calculating the number of infectious monkeys contributing to the FOI
+      foi <- beta * I_inf                   # calculate FOI experienced by susceptible monkeys
+      p_inf <- 1 - exp(-foi * dt)           # converting the FOI (instantaneous rate) to a probability of being infected in the timestep
+      local_infections <- S_all$copy()      # copy the susceptible set
+      local_infections$sample(rate = p_inf) # pick who gets infected locally
+      
+      ## Infections representing importations
+      num_imports <- rpois(1, importation_rate * dt)
+      if (num_imports > 0) {
+        import_infections <- S_all$copy()
+        import_infections$set_difference(local_infections)
+        if (import_infections$size() > 0) {
+          num_to_import <- min(num_imports, import_infections$size())
+          if (is.na(num_to_import)) {
+            num_to_import <- 0
+          }
+          health_render$render('num_to_import', num_to_import, t)
+          import_infections$choose(num_to_import)
         }
+        newly_infected <- local_infections
+        newly_infected$or(import_infections)
+        health$queue_update(value = "E",index = newly_infected)      # updating the health categorical variable
+      } else {
+        num_to_import <- 0
         health_render$render('num_to_import', num_to_import, t)
-        import_infections$choose(num_to_import)
+        health$queue_update(value = "E",index = local_infections)    # updating the health categorical variable
       }
-      newly_infected <- local_infections
-      newly_infected$or(import_infections)
-      health$queue_update(value = "E",index = newly_infected)      # updating the health categorical variable
-    } else {
-      num_to_import <- 0
-      health_render$render('num_to_import', num_to_import, t)
-      health$queue_update(value = "E",index = local_infections)    # updating the health categorical variable
+    }
+  } else {
+    exposure_process <- function(t){
+      
+      ## Getting the index of all those still susceptible
+      S_all <- health$get_index_of("S")  # get index of all monkeys still in susceptible state
+      
+      ## Infections from other PEL monkeys
+      I <- health$get_index_of("I")
+      I_inf <- I$size()                            # calculating the number of infectious monkeys contributing to the FOI
+      N <- health$get_size_of(c("S", "E", "I"))
+      if (N < 1) {
+        foi <- 0                                   # calculate FOI experienced by susceptible monkeys
+      } else {
+        foi <- beta * I_inf / N                    # calculate FOI experienced by susceptible monkeys
+      }
+      p_inf <- 1 - exp(-foi * dt)                  # converting the FOI (instantaneous rate) to a probability of being infected in the timestep
+      local_infections <- S_all$copy()             # copy the susceptible set
+      local_infections$sample(rate = p_inf)        # pick who gets infected locally
+      
+      ## Infections representing importations
+      num_imports <- rpois(1, importation_rate * dt)
+      if (num_imports > 0) {
+        import_infections <- S_all$copy()
+        import_infections$set_difference(local_infections)
+        if (import_infections$size() > 0) {
+          num_to_import <- min(num_imports, import_infections$size())
+          if (is.na(num_to_import)) {
+            num_to_import <- 0
+          }
+          health_render$render('num_to_import', num_to_import, t)
+          import_infections$choose(num_to_import)
+        }
+        newly_infected <- local_infections
+        newly_infected$or(import_infections)
+        health$queue_update(value = "E",index = newly_infected)      # updating the health categorical variable
+      } else {
+        num_to_import <- 0
+        health_render$render('num_to_import', num_to_import, t)
+        health$queue_update(value = "E",index = local_infections)    # updating the health categorical variable
+      }
     }
   }
+  
   
   ## Define infection event and process to schedule moves from E->I
   exposed_infectious_event <- TargetedEvent$new(population_size = N)
