@@ -56,8 +56,8 @@ importations <- 7 # from the genomic data
 importation_last_date <- max(horto_df_fitting$date_collection) - exposure_death_delay # upper bound assumed to be 1 generation time before the final monkey death
 
 ## Parameters for initial particle filtering to identify parameter regime of highest likelihood
-R0_scan <- c(3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20)
-start_date_scan <- start_date + seq(0, 30, 2)
+R0_scan <- c(4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24)
+start_date_scan <- start_date + seq(0, 42, 3)
 
 iterations <- 10
 particles <- 500
@@ -68,6 +68,11 @@ importations_matrix <- array(data = NA, dim = c(iterations, length(R0_scan), len
 final_size_matrix <- array(data = NA, dim = c(iterations, length(R0_scan), length(start_date_scan)))
 output_matrix <- array(data = NA, dim = c(iterations, length(R0_scan), length(start_date_scan), length(horto_df_fitting$count)))
 
+loglikelihood_matrix[, 1:15, ] <- temp$loglike
+importations_matrix[, 1:15, ] <- temp$importations
+final_size_matrix[, 1:15, ] <- temp$final_size
+output_matrix[, 1:15, , ] <- temp$output
+
 overall_seed <- 10
 set.seed(overall_seed)
 simulation_seeds <- array(data = rnbinom(n = iterations * length(R0_scan) * length(start_date_scan), mu = 10^6, size = 1), 
@@ -76,7 +81,7 @@ fresh_run <- TRUE
 if (fresh_run) {
   
   ## Looping through R0
-  for (i in 1:length(R0_scan)) {
+  for (i in 16:length(R0_scan)) {
     
     ## Looping through the start dates
     for (j in 1:length(start_date_scan)) {
@@ -152,7 +157,8 @@ if (fresh_run) {
     
   }
   
-  saveRDS(list(output = output_matrix, final_size = final_size_matrix, loglike = loglikelihood_matrix),
+  saveRDS(list(output = output_matrix, final_size = final_size_matrix, 
+               loglike = loglikelihood_matrix, importations = importations_matrix),
           "3_horto_YFV_R0_estimation/parameterScan_hortoEstimation_YesImportations.rds")
   
 } else {
@@ -162,10 +168,19 @@ if (fresh_run) {
   output_matrix <- temp$output
 }
 
-
 loglik_avg <- apply(loglikelihood_matrix, c(2, 3), mean)
 colnames(loglik_avg) <- paste0("start=", start_date_scan)
 rownames(loglik_avg) <- paste0("R0=", R0_scan)
+
+importations_avg <- apply(importations_matrix, c(2, 3), mean)
+colnames(importations_avg) <- paste0("start=", start_date_scan)
+rownames(importations_avg) <- paste0("R0=", R0_scan)
+
+apply(importations_avg, 2, mean)
+
+scales <- c(-65, -50)
+
+## add in likelihood term for importations
 
 ## Plotting heatmap of inferred R0 and start-date combinations
 df_long <- data.frame(R0 = R0_scan, loglik_avg) %>%
@@ -180,7 +195,7 @@ df_long <- data.frame(R0 = R0_scan, loglik_avg) %>%
          Probability = Likelihood / sum(Likelihood))
 inferred_parameters_plot <- ggplot(df_long, aes(x = StartDate, y = factor(R0), fill = Value)) +
   geom_tile(color = "white") +
-  scale_fill_distiller(palette = "RdBu", limits = c(-55, -51), oob = scales::squish) + 
+  scale_fill_distiller(palette = "RdBu", limits = scales, oob = scales::squish) + 
   labs(x = "Start Date",
        y = expression(R[0]),
        fill = "Avg.\nLoglike") +
@@ -189,7 +204,7 @@ inferred_parameters_plot <- ggplot(df_long, aes(x = StartDate, y = factor(R0), f
   theme_bw() +
   theme(# axis.text.x = element_text(angle = 45, hjust = 1),
         plot.title = element_text(hjust = 0.5, face = "bold"),
-        legend.position = "none")
+        legend.position = "right")
 
 ## Sampling parameter combinations
 set.seed(123)
@@ -209,7 +224,7 @@ sampled_data_R0 <- sampled_data %>%
 sampled_data_R0$R0 <- as.factor(sampled_data_R0$R0)
 R0_marginal_plot <- ggplot(sampled_data_R0, aes(x = R0, fill = AvgValue)) +
   geom_histogram(color = "black", stat = "count") +
-  scale_fill_distiller(palette = "RdBu", limits = c(-55, -51), oob = scales::squish) + 
+  scale_fill_distiller(palette = "RdBu", limits = scales, oob = scales::squish) + 
   labs(x = "Inferred Marginal R0 Distribution",
        y = "Frequency",
        fill = "Avg.\nLoglike") +
@@ -217,7 +232,7 @@ R0_marginal_plot <- ggplot(sampled_data_R0, aes(x = R0, fill = AvgValue)) +
   theme(plot.title = element_text(face = "bold"),
         # axis.text.x = element_text(angle = 45, hjust = 1),
         axis.title.x = element_blank()) +
-  annotate("text", x = 0.75, y = 1000,
+  annotate("text", x = 0.75, y = 2000,
            label = "R0: Basic Reproduction Number", hjust = 0, fontface = "bold", size = 5)
 
 ## Marginal for start date
@@ -229,14 +244,14 @@ sampled_data_StartDate <- sampled_data %>%
 sampled_data_StartDate$StartDate <- as.factor(sampled_data_StartDate$StartDate)
 start_date_marginal_plot <- ggplot(sampled_data_StartDate, aes(x = StartDate, fill = AvgValue)) +
   geom_histogram(color = "black", stat = "count") +
-  scale_fill_distiller(palette = "RdBu", limits = c(-55, -51), oob = scales::squish) + 
+  scale_fill_distiller(palette = "RdBu", limits = scales, oob = scales::squish) + 
   labs(y = "Frequency",
        fill = "Avg.\nLoglike") +
   theme_bw() +
   theme(plot.title = element_text(face = "bold"),
         axis.text.x = element_text(angle = 45, hjust = 1),
         axis.title.x = element_blank()) +
-  annotate("text", x = 0.75, y = 2750,
+  annotate("text", x = 0.75, y = 3550,
            label = "Primary Epidemic Start Date", hjust = 0, fontface = "bold", size = 5)
 
 marginals_legend <- cowplot::get_legend(start_date_marginal_plot)
@@ -247,7 +262,8 @@ marginals_plot <- cowplot::plot_grid(R0_marginal_plot + theme(legend.position = 
 
 marginals_plot_with_legend <- cowplot::plot_grid(marginals_plot, marginals_legend, nrow = 1, rel_widths = c(4, 1))
 
-inference_overall <- cowplot::plot_grid(inferred_parameters_plot, marginals_plot_with_legend)
+inference_overall <- cowplot::plot_grid(inferred_parameters_plot + theme(legend.position = "none"), 
+                                        marginals_plot_with_legend)
 
 ## Plotting the inferred deaths trajectories
 sampled_output_matrix <- matrix(nrow = samples, ncol = length(horto_df_fitting$count))
@@ -275,18 +291,19 @@ output_df <- data.frame(time = horto_df_fitting$date_collection,
 "#DAFF7D"
 "#419D78"
 outbreak_inference_plot <- ggplot(output_df, aes(x = time)) +
-  geom_ribbon(aes(ymin = lower, ymax = upper), fill = "#419D78", alpha = 0.2) +
-  geom_line(aes(y = mean), color = "#419D78", size = 0.75) +
+  geom_ribbon(aes(ymin = lower, ymax = upper), fill = "#AFD5AA", alpha = 0.2) +
+  geom_line(aes(y = mean), color = "#AFD5AA", size = 0.75) +
   geom_point(aes(y = observed), color = "black", size = 2) +
-  labs(x = "Date", y = "Daily Reported NHP Deaths") +
+  labs(x = "Date", y = "Daily Reported\nNHP Deaths") +
   scale_y_continuous(breaks = c(0, 2, 4, 6, 8, 10)) +
   scale_x_date(date_breaks = "1 week") +
   theme_bw() +
   theme(text = element_text(size = 12),
-        plot.title = element_text(hjust = 0.5))
+        plot.title = element_text(hjust = 0.5),
+        axis.text.x = element_text(angle = 45, hjust = 1))
 
-cowplot::plot_grid(outbreak_inference_plot, inference_overall, nrow = 2, rel_heights = c(1, 1.35), 
-                   labels = c("A", "B"))
+cowplot::plot_grid(outbreak_inference_plot, inference_overall, nrow = 2, rel_heights = c(1, 1.55), 
+                   labels = c("A", "B"), align = "hv")
 
 ##########################################################
 # lower <- apply(sampled_output_matrix, 2, min)

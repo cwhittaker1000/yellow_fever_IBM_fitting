@@ -57,9 +57,13 @@ mortality_posterior_plot <- ggplot(df_posterior_mortality_summary, aes(x = day))
   geom_line(aes(y = predicted_mean), color = "blue", size = 1) +
   geom_ribbon(aes(ymin = predicted_lower, ymax = predicted_upper), 
               alpha = 0.2, fill = "blue") +
-  labs(title = "Observed vs. Posterior Predictive Death Counts",
-       y = "Deaths",x = "Days") +
+  labs(title = "Observed vs. Posterior Predictive Death Proportion",
+       y = "Proportion Dying",x = "Days") +
   theme_minimal()
+
+cowplot::plot_grid(mortality_posterior_plot, 
+                   died_posterior_plot,
+                   labels = c("A", "B"))
 
 modelled_a <- mean(rstan::extract(fit_adults25, "a")[[1]])
 modelled_b <- mean(rstan::extract(fit_adults25, "b")[[1]])
