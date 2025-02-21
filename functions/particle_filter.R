@@ -22,8 +22,14 @@ r_loglike <- function(params, data, misc) {
     stop("misc$likelihood must contain at least one of 'epidemiological', 'importations', 'start_date'.")
   }
   
-  ## Converting R0 to model input beta
-  beta_sim <- params["R0"] * misc$gamma / misc$N
+  ## Converting R0 to model input beta (which varies according to transmission type assumption)
+  if (misc$transmission_type == "density_dependent") {
+    beta_sim <- params["R0"] * misc$gamma / misc$N
+  } else if (misc$transmission_type == "frequency_dependent") {
+    beta_sim <- params["R0"] * misc$gamma
+  } else {
+    stop("transmission_type incorrectly specified")
+  }
   
   ## Creating storage for model outputs
   deaths_df <- array(data = NA, dim = c(misc$particles, length(data$time)))
@@ -113,7 +119,7 @@ r_loglike <- function(params, data, misc) {
   ## Calculating the likelihood
   epi_likelihood <- ifelse("epidemiological" %in% misc$likelihood, sum(loglikelihood), 0) # likelihood for epidemiological data 
   import_likelihood <- ifelse("importations" %in% misc$likelihood, dpois(x = importations, lambda = misc$empirical_importations, log = TRUE), 0) # likelihood for number of empirical importations 
-  start_date_relative_first_death <- as.numeric(start_date - as.Date("2017-10-09"))
+  start_date_relative_first_death <- as.numeric(misc$start_date - as.Date("2017-10-09"))
   start_date_likelihood <- ifelse("start_date" %in% misc$likelihood, dweibull(x = start_date_relative_first_death, shape = 5.562197, scale = 29.13864, log = TRUE), 0)
                            ## note this comes from fitting a Weibull dist to the 2.5, 50 and 97.5 quantile for MRCA for Clade A from Nunos' 
                            ## teams message with bootstrap support > 0.7, minus 1 full generation time (approx 19 days). 

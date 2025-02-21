@@ -57,25 +57,27 @@ importation_last_date <- max(horto_df_fitting$date_collection) - exposure_death_
 
 ## Parameters for initial particle filtering to identify parameter regime of highest likelihood
 R0_scan <- c(2, 4, 6, 8, 10, 12, 14, 16)
-start_date_scan <- start_date + seq(0, 27, 3)
+start_date_scan <- start_date + seq(0, 25, 5) # seq(0, 27, 3)
 transmission_type_scan <- c("frequency_dependent", "density_dependent")
+exponential_noise_scan <- c(1/1e-6, 1/1e-3)
 
-iterations <- 10
-particles <- 250
-cores <- 10
+iterations <- 5
+particles <- 100
+cores <- 5
 
-loglikelihood_matrix <- array(data = NA, dim = c(iterations, length(R0_scan), length(start_date_scan), 2))
-epilikelihood_matrix <- array(data = NA, dim = c(iterations, length(R0_scan), length(start_date_scan), 2))
-importlikelihood_matrix <- array(data = NA, dim = c(iterations, length(R0_scan), length(start_date_scan), 2))
-startdatelikelihood_matrix <- array(data = NA, dim = c(iterations, length(R0_scan), length(start_date_scan), 2))
-importations_matrix <- array(data = NA, dim = c(iterations, length(R0_scan), length(start_date_scan), 2))
-final_size_matrix <- array(data = NA, dim = c(iterations, length(R0_scan), length(start_date_scan), 2))
-output_matrix <- array(data = NA, dim = c(iterations, length(R0_scan), length(start_date_scan), length(horto_df_fitting$count), 2))
+loglikelihood_matrix <- array(data = NA, dim = c(iterations, length(R0_scan), length(start_date_scan), length(transmission_type_scan), length(exponential_noise_scan)))
+epilikelihood_matrix <- array(data = NA, dim = c(iterations, length(R0_scan), length(start_date_scan), length(transmission_type_scan), length(exponential_noise_scan)))
+importlikelihood_matrix <- array(data = NA, dim = c(iterations, length(R0_scan), length(start_date_scan), length(transmission_type_scan), length(exponential_noise_scan)))
+startdatelikelihood_matrix <- array(data = NA, dim = c(iterations, length(R0_scan), length(start_date_scan), length(transmission_type_scan), length(exponential_noise_scan)))
+importations_matrix <- array(data = NA, dim = c(iterations, length(R0_scan), length(start_date_scan), length(transmission_type_scan), length(exponential_noise_scan)))
+final_size_matrix <- array(data = NA, dim = c(iterations, length(R0_scan), length(start_date_scan), length(transmission_type_scan), length(exponential_noise_scan)))
+output_matrix <- array(data = NA, dim = c(iterations, length(R0_scan), length(start_date_scan), length(transmission_type_scan), length(exponential_noise_scan), length(horto_df_fitting$count)))
 
 overall_seed <- 10
 set.seed(overall_seed)
-simulation_seeds <- array(data = rnbinom(n = iterations * length(R0_scan) * length(start_date_scan), mu = 10^6, size = 1), 
-                          dim = c(length(R0_scan), length(start_date_scan), iterations))
+simulation_seeds <- array(data = rnbinom(n = iterations * length(R0_scan) * length(start_date_scan) * length(transmission_type_scan) * length(exponential_noise_scan), 
+                                         mu = 10^6, size = 1), 
+                          dim = c(length(R0_scan), length(start_date_scan), length(transmission_type_scan), length(exponential_noise_scan), iterations))
 fresh_run <- TRUE
 if (fresh_run) {
   
@@ -87,76 +89,84 @@ if (fresh_run) {
       
       for (k in 1:length(transmission_type_scan)) {
         
-        # Selecting the start date and filtering the Horto data to start then
-        start_date <- start_date_scan[j]
-        data <- horto_df_fitting %>%
-          filter(date_collection >= start_date) %>%
-          rename(daily_incidence = count)
-        steps <- nrow(data) / dt
-        days <- nrow(data)
-        
-        # Calculating the importation rate - note that given the epidemic goes to extinction, we really
-        # need to calculate it up to 1 full generation time before the last death (i.e. the time when that last monkey was infected 
-        # in our model) - final date in importation_date_range is the actual time when all the susceptibles are depleted
-        importation_date_range <- data %>%
-          filter(date_collection <= importation_last_date)
-        importation_rate <- importations / nrow(importation_date_range) 
-        
-        # Defining the misc list that supports running the particle filter
-        misc <- list(seed = simulation_seeds[i, j,  ], 
-                     steps = steps, 
-                     gamma = gamma,
-                     particles = particles,
-                     dt = dt, 
-                     N = N, 
-                     start_date = start_date,
-                     importation_rate = importation_rate,
-                     empirical_importations = importations,
-                     transmission_type = transmission_type_scan[k], 
-                     exponential_noise_rate = 1/1e-5,
-                     likelihood = c("epidemiological", "importations", "start_date"),
-                     initial_infections = initial_infections, 
-                     death_obs_prop = death_obs_prop, 
-                     initial_run = TRUE, 
-                     overall_run_length = steps,
-                     latent_period_gamma_shape = latent_period_gamma_shape, 
-                     EIP_gamma_shape = EIP_gamma_shape,
-                     EIP_gamma_rate = EIP_gamma_rate, 
-                     latent_period_gamma_rate = latent_period_gamma_rate,
-                     infectious_period_gamma_shape = infectious_period_gamma_shape, 
-                     infectious_period_gamma_rate = infectious_period_gamma_rate,
-                     death_observation_gamma_shape = 1, 
-                     death_observation_gamma_rate = death_observation_gamma_rate)
-        
-        # Setting up the cluster to run everything in parallel
-        cl <- makeCluster(cores)
-        clusterExport(cl, varlist = c("r_loglike", "weight_particles", "data", "misc", "run_simulation2"))
-        clusterEvalQ(cl, {
-          library(individual)
-        })
-        
-        # Running the loglikelihood function in parallel
-        R0_temp <- c("R0" = R0_scan[i])
-        clusterExport(cl, varlist = c("R0_temp"))
-        result_parallel <- parLapply(cl, 1:iterations, function(i) {
-          misc_new <- misc
-          misc_new$seed <- misc$seed[i]
-          temp <- r_loglike(R0_temp, data, misc_new)
-          return(temp)
-        })
-        parallel::stopCluster(cl)
-        
-        # Storing the output
-        padding_zeroes <- rep(0, as.numeric(start_date_scan[j] - start_date_scan[1]))
-        for (l in 1:iterations) {
-          output_matrix[l, i, j, k, ] <- c(padding_zeroes, result_parallel[[l]]$deaths_trajectory)
-          final_size_matrix[l, i, j, k] <- sum(result_parallel[[l]]$deaths_trajectory)
-          loglikelihood_matrix[l, i, j, k] <- result_parallel[[l]]$loglikelihood
-          epilikelihood_matrix[l, i, j, k] <- result_parallel[[l]]$likelihood_components$epi
-          importlikelihood_matrix[l, i, j, k] <- result_parallel[[l]]$likelihood_components$importations
-          startdatelikelihood_matrix[l, i, j, k] <- result_parallel[[l]]$likelihood_components$start
-          importations_matrix[l, i, j, k] <- result_parallel[[l]]$importations
+        for (l in 1:length(exponential_noise_scan)) {
+          
+          # Selecting the start date and filtering the Horto data to start then
+          start_date <- start_date_scan[j]
+          data <- horto_df_fitting %>%
+            filter(date_collection >= start_date) %>%
+            rename(daily_incidence = count)
+          steps <- nrow(data) / dt
+          days <- nrow(data)
+          
+          # Calculating the importation rate - note that given the epidemic goes to extinction, we really
+          # need to calculate it up to 1 full generation time before the last death (i.e. the time when that last monkey was infected 
+          # in our model) - final date in importation_date_range is the actual time when all the susceptibles are depleted
+          importation_date_range <- data %>%
+            filter(date_collection <= importation_last_date)
+          importation_rate <- importations / nrow(importation_date_range) 
+          
+          # Defining the misc list that supports running the particle filter
+          misc <- list(seed = simulation_seeds[i, j, k, l, ], 
+                       steps = steps, 
+                       gamma = gamma,
+                       particles = particles,
+                       dt = dt, 
+                       N = N, 
+                       start_date = start_date,
+                       importation_rate = importation_rate,
+                       empirical_importations = importations,
+                       transmission_type = transmission_type_scan[k], 
+                       exponential_noise_rate = exponential_noise_scan[l],
+                       likelihood = c("epidemiological", "importations", "start_date"),
+                       initial_infections = initial_infections, 
+                       death_obs_prop = death_obs_prop, 
+                       initial_run = TRUE, 
+                       overall_run_length = steps,
+                       latent_period_gamma_shape = latent_period_gamma_shape, 
+                       EIP_gamma_shape = EIP_gamma_shape,
+                       EIP_gamma_rate = EIP_gamma_rate, 
+                       latent_period_gamma_rate = latent_period_gamma_rate,
+                       infectious_period_gamma_shape = infectious_period_gamma_shape, 
+                       infectious_period_gamma_rate = infectious_period_gamma_rate,
+                       death_observation_gamma_shape = 1, 
+                       death_observation_gamma_rate = death_observation_gamma_rate)
+          
+          # Setting up the cluster to run everything in parallel
+          cl <- makeCluster(cores)
+          clusterExport(cl, varlist = c("r_loglike", "weight_particles", "data", "misc", "run_simulation2"))
+          clusterEvalQ(cl, {
+            library(individual)
+          })
+          
+          # Running the loglikelihood function in parallel
+          R0_temp <- c("R0" = R0_scan[i])
+          clusterExport(cl, varlist = c("R0_temp"))
+          result_parallel <- parLapply(cl, 1:iterations, function(i) {
+            misc_new <- misc
+            misc_new$seed <- misc$seed[i]
+            temp <- r_loglike(R0_temp, data, misc_new)
+            return(temp)
+          })
+          parallel::stopCluster(cl)
+          
+          # Storing the output
+          padding_zeroes <- rep(0, as.numeric(start_date_scan[j] - start_date_scan[1]))
+          for (m in 1:iterations) {
+            output_matrix[m, i, j, k, l, ] <- c(padding_zeroes, result_parallel[[m]]$deaths_trajectory)
+            final_size_matrix[m, i, j, k, l] <- sum(result_parallel[[m]]$deaths_trajectory)
+            loglikelihood_matrix[m, i, j, k, l] <- result_parallel[[m]]$loglikelihood
+            epilikelihood_matrix[m, i, j, k, l] <- result_parallel[[m]]$likelihood_components$epi
+            importlikelihood_matrix[m, i, j, k, l] <- result_parallel[[m]]$likelihood_components$importations
+            startdatelikelihood_matrix[m, i, j, k, l] <- result_parallel[[m]]$likelihood_components$start
+            importations_matrix[m, i, j, k, l] <- result_parallel[[m]]$importations
+          }
+          
+          print(c("l = ", l))
+          
         }
+        
+        print(c("k = ", k))
         
       }
       
@@ -169,8 +179,10 @@ if (fresh_run) {
   }
   
   saveRDS(list(output = output_matrix, final_size = final_size_matrix, 
-               loglike = loglikelihood_matrix, importations = importations_matrix),
-          "3_horto_YFV_R0_estimation/parameterScan_hortoEstimation_YesImportations.rds")
+               loglike = loglikelihood_matrix, epilikelihood_matrix = epilikelihood_matrix,
+               importlikelihood_matrix = importlikelihood_matrix, startdatelikelihood_matrix = startdatelikelihood_matrix, 
+               importations = importations_matrix),
+          "3_horto_YFV_R0_estimation/NewTester_parameterScan_hortoEstimation_YesImportations.rds")
   
 } else {
   
