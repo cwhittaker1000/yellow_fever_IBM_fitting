@@ -1,10 +1,4 @@
 ### Individual model
-
-## this isn't quite right because the I compartment at different timepoints
-## will contain the same people (i.e. renewal equation style weighting should)
-## be applied to incidence of infection not to the prevalence, which is what
-## the I state represents
-
 run_simulation2 <- function(seed, steps, dt, N, initial_infections, death_obs_prop, 
                             beta, initial_run, overall_run_length, transmission_type,
                             importation_rate,

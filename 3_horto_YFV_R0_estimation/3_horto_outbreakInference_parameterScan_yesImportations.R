@@ -31,7 +31,7 @@ epi_curve <- incidence::incidence(horto_df$date_collection)
 plot(epi_curve)
 
 # Generating incidence data and cutting off first 4 infections
-start_date <- as.Date("2017-10-25")
+start_date <- as.Date("2017-10-23")
 horto_df_fitting <- horto_df %>%
   filter(date_collection > start_date) %>%
   group_by(date_collection) %>%
@@ -58,6 +58,9 @@ importation_last_date <- max(horto_df_fitting$date_collection) - exposure_death_
 ## Parameters for initial particle filtering to identify parameter regime of highest likelihood
 R0_scan <- c(4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24)
 start_date_scan <- start_date + seq(0, 42, 3)
+start_date_relative_first_death <- start_date_scan - as.Date("2017-10-09")
+
+
 
 iterations <- 10
 particles <- 500
@@ -103,6 +106,7 @@ if (fresh_run) {
                    particles = particles,
                    dt = dt, 
                    N = N, 
+                   start_date = start_date,
                    importation_rate = importation_rate,
                    empirical_importations = importations,
                    transmission_type = "density_dependent", 
