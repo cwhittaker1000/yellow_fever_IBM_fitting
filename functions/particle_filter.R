@@ -93,6 +93,7 @@ r_loglike <- function(params, data, misc) {
       storage_list[[j]]$state <- temp$state
       
       # Calculating the number of deaths that occur in that timestep
+      #### NOTE THAT D_OBS_NEW ISN'T CURRENTLY TIMED CORRECTLY AND NEEDS CORRECTING
       temp_num_deaths_timestep <- sum(temp$result$D_obs_new[(1 + nrow(temp$result) - 1/misc$dt):nrow(temp$result)])
       num_deaths_timestep_particle[j] <- temp_num_deaths_timestep
       deaths_df[j, i] <- temp_num_deaths_timestep
@@ -227,6 +228,7 @@ r_loglike_vector <- function(params, data, misc) {
       storage_list[[j]]$state <- temp$state
       
       # Calculating the number of deaths that occur in that timestep
+      #### NOTE THAT D_OBS_NEW ISN'T CURRENTLY TIMED CORRECTLY AND NEEDS CORRECTING
       temp_num_deaths_timestep <- sum(temp$result$D_obs_new[(1 + nrow(temp$result) - 1/misc$dt):nrow(temp$result)])
       num_deaths_timestep_particle[j] <- temp_num_deaths_timestep
       deaths_df[j, i] <- temp_num_deaths_timestep
