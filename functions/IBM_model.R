@@ -25,8 +25,6 @@ run_simulation2 <- function(seed, steps, dt, N, initial_infections, death_obs_pr
                                     initial_values = c(rep("S", N - initial_infections), 
                                                        rep("E", initial_infections)))
   
-  
-  
   ## Exposure process moving individuals S->E
   if (transmission_type == "density_dependent") {
     exposure_process <- function(t){

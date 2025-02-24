@@ -61,9 +61,9 @@ start_date_scan <- start_date + seq(0, 25, 5) # seq(0, 27, 3)
 transmission_type_scan <- c("frequency_dependent", "density_dependent")
 exponential_noise_scan <- c(1/1e-6, 1/1e-3)
 
-iterations <- 5
-particles <- 100
-cores <- 5
+iterations <- 10
+particles <- 200
+cores <- 10
 
 loglikelihood_matrix <- array(data = NA, dim = c(iterations, length(R0_scan), length(start_date_scan), length(transmission_type_scan), length(exponential_noise_scan)))
 epilikelihood_matrix <- array(data = NA, dim = c(iterations, length(R0_scan), length(start_date_scan), length(transmission_type_scan), length(exponential_noise_scan)))
@@ -191,7 +191,85 @@ if (fresh_run) {
   output_matrix <- temp$output
 }
 
-loglik_avg <- apply(loglikelihood_matrix, c(2, 3), mean)
+## Overall loglikelihood
+loglik_avg <- apply(loglikelihood_matrix, c(2, 3, 4 ,5), mean)
+dimnames(loglik_avg) <- list(
+  R0 = R0_scan,                   # use your R0_scan vector here
+  start_date = paste0("s", as.Date(start_date_scan)),
+  transmission_type = transmission_type_scan,
+  exponential_noise = exponential_noise_scan
+)
+df_long <- as.data.frame.table(loglik_avg, responseName = "loglikelihood") %>%
+  mutate(start_date = as.Date(gsub("s", "", start_date)))
+head(df_long)
+scales <- c(-100, -50)
+ggplot(df_long, aes(x = start_date, y = factor(R0), fill = loglikelihood)) +
+  geom_tile(color = "white") +
+  scale_fill_distiller(palette = "RdBu") + # , oob = scales::squish, limits = scales) + 
+  labs(x = "Start Date",
+       y = expression(R[0]),
+       fill = "Avg.\nLoglike") +
+  scale_x_date(expand = c(0, 0)) +  # Remove whitespace on the x-axis
+  scale_y_discrete(expand = c(0, 0)) +  # Remove whitespace on the y-axis
+  theme_bw() +
+  facet_grid(transmission_type ~ exponential_noise) +
+  theme(# axis.text.x = element_text(angle = 45, hjust = 1),
+    plot.title = element_text(hjust = 0.5, face = "bold"),
+    legend.position = "right")
+
+## Importations likelihood
+importation_lik_avg <- apply(importlikelihood_matrix, c(2, 3, 4 ,5), mean)
+dimnames(importation_lik_avg) <- list(
+  R0 = R0_scan,                   # use your R0_scan vector here
+  start_date = paste0("s", as.Date(start_date_scan)),
+  transmission_type = transmission_type_scan,
+  exponential_noise = exponential_noise_scan
+)
+df_long_import <- as.data.frame.table(importation_lik_avg, responseName = "loglikelihood") %>%
+  mutate(start_date = as.Date(gsub("s", "", start_date)))
+head(df_long_import)
+scales <- c(-100, -50)
+ggplot(df_long_import, aes(x = start_date, y = factor(R0), fill = loglikelihood)) +
+  geom_tile(color = "white") +
+  scale_fill_distiller(palette = "RdBu", oob = scales::squish) + #  limits = scales) + 
+  labs(x = "Start Date",
+       y = expression(R[0]),
+       fill = "Avg.\nLoglike") +
+  scale_x_date(expand = c(0, 0)) +  # Remove whitespace on the x-axis
+  scale_y_discrete(expand = c(0, 0)) +  # Remove whitespace on the y-axis
+  theme_bw() +
+  facet_grid(transmission_type ~ exponential_noise) +
+  theme(# axis.text.x = element_text(angle = 45, hjust = 1),
+    plot.title = element_text(hjust = 0.5, face = "bold"),
+    legend.position = "right")
+
+## startdatelikelihood_matrix likelihood
+startdate_lik_avg <- apply(startdatelikelihood_matrix, c(2, 3, 4 ,5), mean)
+dimnames(startdate_lik_avg) <- list(
+  R0 = R0_scan,                   # use your R0_scan vector here
+  start_date = paste0("s", as.Date(start_date_scan)),
+  transmission_type = transmission_type_scan,
+  exponential_noise = exponential_noise_scan
+)
+df_long_start <- as.data.frame.table(startdate_lik_avg, responseName = "loglikelihood") %>%
+  mutate(start_date = as.Date(gsub("s", "", start_date)))
+head(df_long)
+scales <- c(-100, -50)
+ggplot(df_long_start, aes(x = start_date, y = factor(R0), fill = loglikelihood)) +
+  geom_tile(color = "white") +
+  scale_fill_distiller(palette = "RdBu", oob = scales::squish) + #  limits = scales) + 
+  labs(x = "Start Date",
+       y = expression(R[0]),
+       fill = "Avg.\nLoglike") +
+  scale_x_date(expand = c(0, 0)) +  # Remove whitespace on the x-axis
+  scale_y_discrete(expand = c(0, 0)) +  # Remove whitespace on the y-axis
+  theme_bw() +
+  facet_grid(transmission_type ~ exponential_noise) +
+  theme(# axis.text.x = element_text(angle = 45, hjust = 1),
+    plot.title = element_text(hjust = 0.5, face = "bold"),
+    legend.position = "right")
+
+
 colnames(loglik_avg) <- paste0("start=", start_date_scan)
 rownames(loglik_avg) <- paste0("R0=", R0_scan)
 
@@ -200,6 +278,30 @@ colnames(importations_avg) <- paste0("start=", start_date_scan)
 rownames(importations_avg) <- paste0("R0=", R0_scan)
 
 apply(importations_avg, 2, mean)
+
+imports <- apply(importations_matrix, c(2, 3, 4, 5), mean)
+dimnames(imports) <- list(
+  R0 = R0_scan,                   # use your R0_scan vector here
+  start_date = paste0("s", as.Date(start_date_scan)),
+  transmission_type = transmission_type_scan,
+  exponential_noise = exponential_noise_scan
+)
+df_long_imports <- as.data.frame.table(imports, responseName = "imports") %>%
+  mutate(start_date = as.Date(gsub("s", "", start_date)))
+ggplot(df_long_imports, aes(x = start_date, y = factor(R0), fill = imports)) +
+  geom_tile(color = "white") +
+  scale_fill_distiller(palette = "RdBu", oob = scales::squish) + #  limits = scales) + 
+  labs(x = "Start Date",
+       y = expression(R[0]),
+       fill = "Avg.\nLoglike") +
+  scale_x_date(expand = c(0, 0)) +  # Remove whitespace on the x-axis
+  scale_y_discrete(expand = c(0, 0)) +  # Remove whitespace on the y-axis
+  theme_bw() +
+  facet_grid(transmission_type ~ exponential_noise) +
+  theme(# axis.text.x = element_text(angle = 45, hjust = 1),
+    plot.title = element_text(hjust = 0.5, face = "bold"),
+    legend.position = "right")
+## lower R0 and later start date needs more imports
 
 scales <- c(-65, -50)
 
@@ -235,13 +337,13 @@ samples <- 10000
 sampled_indices <- sample(1:nrow(df_long), 
                           size = 10000,
                           replace = TRUE,
-                          prob = df_long$Probability)
-sampled_data <- df_long[sampled_indices, c("R0", "StartDate", "Value")] 
+                          prob = exp(df_long$loglikelihood))
+sampled_data <- df_long[sampled_indices, c("R0", "start_date", "loglikelihood")] 
 
 ## Marginal for R0
 avg_R0_values <- sampled_data %>%
   group_by(R0) %>%
-  summarise(AvgValue = mean(Value))
+  summarise(AvgValue = mean(loglikelihood))
 sampled_data_R0 <- sampled_data %>%
   left_join(avg_R0_values, by = "R0")
 sampled_data_R0$R0 <- as.factor(sampled_data_R0$R0)

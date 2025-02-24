@@ -127,14 +127,16 @@ r_loglike <- function(params, data, misc) {
                            ## 2.5% = 2017-11-11, - 19 days = "2017-10-23" i.e. 14 days since 2017-10-09
                            ## 50% = 2017-11-26, - 19 days = "2017-11-07"  i.e  29 days since 2017-10-09
                            ## 97.5% = 2017-12-03, - 19 days = "2017-11-14" i.e. 36 days since 2017-10-09
-  total_likelihood <- epi_likelihood + import_likelihood + start_date_likelihood
+  R0_prior <- misc$prior_function(params["R0"])
+  total_likelihood <- epi_likelihood + import_likelihood + start_date_likelihood + R0_prior
   
   ## Returning output
   return(list(deaths_trajectory = deaths_trajectory, 
               loglikelihood = total_likelihood,
               likelihood_components = list(epi = epi_likelihood,
                                            importations = import_likelihood,
-                                           start = start_date_likelihood),
+                                           start = start_date_likelihood,
+                                           R0_prior = R0_prior),
               importations = importations))
   
 }
