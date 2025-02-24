@@ -62,7 +62,7 @@ run_simulation2 <- function(seed, steps, dt, N, initial_infections, death_obs_pr
       I_monkeys <- health$get_index_of("I")
       I_count <- I_monkeys$size()
       lambda_V <- ifelse(N_hosts == 0, 0, 1 * (I_count / N_hosts))  # host-to-vector transmission fixed at 1
-      p_inf_vector <- 0 # 1 - exp(-lambda_V * dt)
+      p_inf_vector <- 1 - exp(-lambda_V * dt)
       
       # Vectorized sampling: select a set of susceptible mosquitoes to become exposed.
       new_exposed <- V_S_index$sample(rate = p_inf_vector)
