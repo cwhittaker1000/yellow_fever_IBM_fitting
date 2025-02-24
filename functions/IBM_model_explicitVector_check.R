@@ -1,6 +1,8 @@
 run_simulation_vector <- function(seed, steps, dt, N, initial_infections, death_obs_prop, 
                                   beta_HV,
-                                  beta_VH,    # composite vector-to-host transmission parameter (β)
+                                  R0 = R0,
+                                  EIP_mean = EIP_mean,
+                                  NHP_death_rate = NHP_death_rate,
                                   initial_run, overall_run_length,
                                   importation_rate,
                                   EIP_gamma_shape,  # Gamma shape for extrinsic incubation period (EIP)
@@ -99,8 +101,9 @@ run_simulation_vector <- function(seed, steps, dt, N, initial_infections, death_
   # Susceptible monkeys become exposed by bites from infectious mosquitoes.
   host_exposure_process <- function(t) {
     V_I_count <- v_health$get_index_of("V_I")$size()
-    N_hosts <- N # health$get_size_of(c("S", "E", "I")) # N 
-    lambda_M <- ifelse(N_hosts == 0, 0, (v_population / N_hosts) * beta_VH * (V_I_count / v_population))
+    N_hosts <- health$get_size_of(c("S", "E", "I")) # N 
+    beta_VH <- (R0 * vector_mortality_rate * NHP_death_rate) / ((v_population / N) * exp(- vector_mortality_rate * EIP_mean) * beta_HV)
+    lambda_M <- ifelse(N_hosts == 0, 0, (v_population / N) * beta_VH * (V_I_count / v_population))
     p_inf_host <- 1 - exp(-lambda_M * dt)
     S_all <- health$get_index_of("S")
     local_infections <- S_all$copy()
