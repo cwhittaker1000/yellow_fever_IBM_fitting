@@ -1,9 +1,8 @@
 # load required libraries
-library(individual); library(dplyr); library(tidyverse); library(doParallel); library(tictoc); 
-library(parallel); library(profvis); library(truncnorm)
+library(individual); library(dplyr); library(tidyverse); library(doParallel); library(tictoc); library(parallel); library(profvis);
 
 ## Sourcing functions
-source("functions/IBM_model.R")
+source("functions/IBM_model_explicitVector.R")
 source("functions/particle_filter.R")
 
 # Loading in fitted parameters
@@ -53,19 +52,19 @@ death_obs_prop <- N_obs / N
 dt <- 0.2
 initial_infections <- 1
 gamma <- 1 / (infectious_period_gamma_shape / infectious_period_gamma_rate)
-importations <- 18 # from the genomic data
+importations <- 7 # from the genomic data
 importation_last_date <- max(horto_df_fitting$date_collection) - exposure_death_delay # upper bound assumed to be 1 generation time before the final monkey death
+vector_mortality_rate <- 0.02
 
 ## Parameters for initial particle filtering to identify parameter regime of highest likelihood
-R0_scan <- c(2, 4, 6, 8, 10, 12, 14, 16, 18)
-start_date_scan <- start_date + seq(0, 21, 3)
+R0_scan <- c(2, 4, 6, 8, 10, 12, 14, 16)
+start_date_scan <- as.Date("2017-11-02") # start_date + seq(0, 25, 5) # seq(0, 27, 3)
 transmission_type_scan <- c("density_dependent")
-exponential_noise_scan <- 1/1e-1
-R0_prior_function <- function(R0_value) { return(log(dtruncnorm(R0_value, a = 1, b = 18, mean = 3.55946, sd = 3.310322))) }
+exponential_noise_scan <- c(1/1e-4)
 
-iterations <- 10
-particles <- 300
-cores <- 10
+iterations <- 5
+particles <- 100
+cores <- 5
 
 loglikelihood_matrix <- array(data = NA, dim = c(iterations, length(R0_scan), length(start_date_scan), length(transmission_type_scan), length(exponential_noise_scan)))
 epilikelihood_matrix <- array(data = NA, dim = c(iterations, length(R0_scan), length(start_date_scan), length(transmission_type_scan), length(exponential_noise_scan)))
@@ -133,14 +132,14 @@ if (fresh_run) {
                        infectious_period_gamma_rate = infectious_period_gamma_rate,
                        death_observation_gamma_shape = 1, 
                        death_observation_gamma_rate = death_observation_gamma_rate,
-                       prior_function = R0_prior_function)
+                       vector_mortality_rate = vector_mortality_rate,
+                       prior_function = function(n) {return(0)})
           
           # Setting up the cluster to run everything in parallel
           cl <- makeCluster(cores)
-          clusterExport(cl, varlist = c("r_loglike", "weight_particles", "data", "misc", "run_simulation2"))
+          clusterExport(cl, varlist = c("r_loglike_vector", "weight_particles", "data", "misc", "run_simulation_vector"))
           clusterEvalQ(cl, {
             library(individual)
-            library(truncnorm)
           })
           
           # Running the loglikelihood function in parallel
@@ -149,7 +148,7 @@ if (fresh_run) {
           result_parallel <- parLapply(cl, 1:iterations, function(i) {
             misc_new <- misc
             misc_new$seed <- misc$seed[i]
-            temp <- r_loglike(R0_temp, data, misc_new)
+            temp <- r_loglike_vector(R0_temp, data, misc_new)
             return(temp)
           })
           parallel::stopCluster(cl)
@@ -204,8 +203,7 @@ dimnames(loglik_avg) <- list(
   exponential_noise = exponential_noise_scan
 )
 df_long <- as.data.frame.table(loglik_avg, responseName = "loglikelihood") %>%
-  mutate(start_date = as.Date(gsub("s", "", start_date))) %>%
-  filter(exponential_noise == "10")
+  mutate(start_date = as.Date(gsub("s", "", start_date)))
 head(df_long)
 scales <- c(-100, -50)
 ggplot(df_long, aes(x = start_date, y = factor(R0), fill = loglikelihood)) +
@@ -231,8 +229,7 @@ dimnames(importation_lik_avg) <- list(
   exponential_noise = exponential_noise_scan
 )
 df_long_import <- as.data.frame.table(importation_lik_avg, responseName = "loglikelihood") %>%
-  mutate(start_date = as.Date(gsub("s", "", start_date))) %>%
-  filter(exponential_noise == "10")
+  mutate(start_date = as.Date(gsub("s", "", start_date)))
 head(df_long_import)
 scales <- c(-100, -50)
 ggplot(df_long_import, aes(x = start_date, y = factor(R0), fill = loglikelihood)) +
@@ -293,8 +290,7 @@ dimnames(imports) <- list(
   exponential_noise = exponential_noise_scan
 )
 df_long_imports <- as.data.frame.table(imports, responseName = "imports") %>%
-  mutate(start_date = as.Date(gsub("s", "", start_date))) %>%
-  filter(exponential_noise == "10")
+  mutate(start_date = as.Date(gsub("s", "", start_date)))
 ggplot(df_long_imports, aes(x = start_date, y = factor(R0), fill = imports)) +
   geom_tile(color = "white") +
   scale_fill_distiller(palette = "RdBu", oob = scales::squish) + #  limits = scales) + 
