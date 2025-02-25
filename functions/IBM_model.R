@@ -62,7 +62,7 @@ run_simulation2 <- function(seed, steps, dt, N, initial_infections, death_obs_pr
         health$queue_update(value = "E",index = local_infections)    # updating the health categorical variable
       }
     }
-  } else {
+  } else if (transmission_type == "frequency_dependent") {
     exposure_process <- function(t){
       
       ## Getting the index of all those still susceptible
@@ -71,7 +71,7 @@ run_simulation2 <- function(seed, steps, dt, N, initial_infections, death_obs_pr
       ## Infections from other PEL monkeys
       I <- health$get_index_of("I")
       I_inf <- I$size()                            # calculating the number of infectious monkeys contributing to the FOI
-      N <- health$get_size_of(c("S", "E", "I"))
+      N <- health$get_size_of(c("S", "E", "I"))    # maybe this should be "N" instead (at which point we're assuming something semi-density dependent I think)
       if (N < 1) {
         foi <- 0                                   # calculate FOI experienced by susceptible monkeys
       } else {
@@ -103,8 +103,9 @@ run_simulation2 <- function(seed, steps, dt, N, initial_infections, death_obs_pr
         health$queue_update(value = "E",index = local_infections)    # updating the health categorical variable
       }
     }
+  } else {
+    stop("something wrong in transmission type specification")
   }
-  
   
   ## Define infection event and process to schedule moves from E->I
   exposed_infectious_event <- TargetedEvent$new(population_size = N)
@@ -135,9 +136,9 @@ run_simulation2 <- function(seed, steps, dt, N, initial_infections, death_obs_pr
     I <- health$get_index_of("I")
     already_scheduled <- infectious_death_event$get_scheduled()
     I$and(already_scheduled$not(inplace = TRUE))
-    death_times <- round((rgamma(n = I$size(), 
-                                 shape = infectious_period_gamma_shape, 
-                                 rate = infectious_period_gamma_rate) + 1) / dt)
+    death_times <- rgamma(n = I$size(), 
+                          shape = infectious_period_gamma_shape, 
+                          rate = infectious_period_gamma_rate) / dt
     infectious_death_event$schedule(target = I, delay = death_times)
   }
   
@@ -167,14 +168,14 @@ run_simulation2 <- function(seed, steps, dt, N, initial_infections, death_obs_pr
     unscheduled_to_Dobs <- unscheduled_to_Dobs$sample(death_obs_prop)
     unscheduled_to_D_unobs <- D$and(unscheduled_to_Dobs$not(inplace = FALSE))
     
-    observation_times <- round((rgamma(n = unscheduled_to_Dobs$size(), 
-                                       shape = death_observation_gamma_shape, 
-                                       rate = death_observation_gamma_rate) + 1) / dt)
+    observation_times <- rgamma(n = unscheduled_to_Dobs$size(), 
+                                shape = death_observation_gamma_shape, 
+                                rate = death_observation_gamma_rate) / dt
     observation_event$schedule(target = unscheduled_to_Dobs, delay = observation_times)
     unobserved_event$schedule(target = unscheduled_to_D_unobs, delay = 1)
     
     ## Define render
-    health_render$render('D_obs_new', unscheduled_to_Dobs$size(), t)
+    # health_render$render('D_obs_new', unscheduled_to_Dobs$size(), t)
     
   }
   
@@ -183,7 +184,7 @@ run_simulation2 <- function(seed, steps, dt, N, initial_infections, death_obs_pr
   health_render_process <- categorical_count_renderer_process(
     renderer = health_render,
     variable = health,
-    categories =  c("Dobs")
+    categories =  c("Dobs", "D_unobs")
   )
   
   ## Run simulation loop
