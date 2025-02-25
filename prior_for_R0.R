@@ -62,7 +62,7 @@ neg_log_lik <- function(params, data, a, b) {
 }
 
 # Example data: replace this vector with your actual data
-data_vector <- c(6, 4.8, 5.2, 7.1, 11, 4.1, 2.38, 3.59, 3.23, 4.21, 1.35)
+data_vector <- c(6, 4.8, 5.2, 7.1, 11, 4.1, 2.38, 3.59, 3.23, 4.21, 1.35) # from Journal of Travel Medicine article
 
 # Specify truncation bounds (for example, only values between 0 and 5)
 a <- 1
