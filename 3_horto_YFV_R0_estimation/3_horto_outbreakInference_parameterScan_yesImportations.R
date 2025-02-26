@@ -57,14 +57,14 @@ importations <- 18 # from the genomic data
 importation_last_date <- max(horto_df_fitting$date_collection) - exposure_death_delay # upper bound assumed to be 1 generation time before the final monkey death
 
 ## Parameters for initial particle filtering to identify parameter regime of highest likelihood
-R0_scan <- c(2, 4, 6, 8, 10, 12, 14, 16, 18)
-start_date_scan <- start_date + seq(0, 21, 3)
+R0_scan <- c(2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16)
+start_date_scan <- start_date + seq(0, 36, 3)
 transmission_type_scan <- c("density_dependent")
 exponential_noise_scan <- 1/1e-1
 R0_prior_function <- function(R0_value) { return(log(dtruncnorm(R0_value, a = 1, b = 18, mean = 3.55946, sd = 3.310322))) }
 
 iterations <- 10
-particles <- 300
+particles <- 500
 cores <- 10
 
 loglikelihood_matrix <- array(data = NA, dim = c(iterations, length(R0_scan), length(start_date_scan), length(transmission_type_scan), length(exponential_noise_scan)))
@@ -207,7 +207,7 @@ df_long <- as.data.frame.table(loglik_avg, responseName = "loglikelihood") %>%
   mutate(start_date = as.Date(gsub("s", "", start_date))) %>%
   filter(exponential_noise == "10")
 head(df_long)
-scales <- c(-100, -50)
+scales <- c(-100, -60)
 ggplot(df_long, aes(x = start_date, y = factor(R0), fill = loglikelihood)) +
   geom_tile(color = "white") +
   scale_fill_distiller(palette = "RdBu") + # , oob = scales::squish, limits = scales) + 
@@ -221,6 +221,34 @@ ggplot(df_long, aes(x = start_date, y = factor(R0), fill = loglikelihood)) +
   theme(# axis.text.x = element_text(angle = 45, hjust = 1),
     plot.title = element_text(hjust = 0.5, face = "bold"),
     legend.position = "right")
+
+epi_loglik_avg <- apply(epilikelihood_matrix, c(2, 3, 4 ,5), mean)
+dimnames(epi_loglik_avg) <- list(
+  R0 = R0_scan,                   # use your R0_scan vector here
+  start_date = paste0("s", as.Date(start_date_scan)),
+  transmission_type = transmission_type_scan,
+  exponential_noise = exponential_noise_scan
+)
+df_long <- as.data.frame.table(epi_loglik_avg, responseName = "loglikelihood") %>%
+  mutate(start_date = as.Date(gsub("s", "", start_date))) %>%
+  filter(exponential_noise == "10")
+head(df_long)
+scales <- c(-100, -60)
+ggplot(df_long, aes(x = start_date, y = factor(R0), fill = loglikelihood)) +
+  geom_tile(color = "white") +
+  scale_fill_distiller(palette = "RdBu") + # , oob = scales::squish, limits = scales) + 
+  labs(x = "Start Date",
+       y = expression(R[0]),
+       fill = "Avg.\nLoglike") +
+  scale_x_date(expand = c(0, 0)) +  # Remove whitespace on the x-axis
+  scale_y_discrete(expand = c(0, 0)) +  # Remove whitespace on the y-axis
+  theme_bw() +
+  facet_grid(transmission_type ~ exponential_noise) +
+  theme(# axis.text.x = element_text(angle = 45, hjust = 1),
+    plot.title = element_text(hjust = 0.5, face = "bold"),
+    legend.position = "right")
+
+## Epidemiological likelihood
 
 ## Importations likelihood
 importation_lik_avg <- apply(importlikelihood_matrix, c(2, 3, 4 ,5), mean)
@@ -260,7 +288,7 @@ dimnames(startdate_lik_avg) <- list(
 df_long_start <- as.data.frame.table(startdate_lik_avg, responseName = "loglikelihood") %>%
   mutate(start_date = as.Date(gsub("s", "", start_date)))
 head(df_long)
-scales <- c(-100, -50)
+scales <- c(-100, -60)
 ggplot(df_long_start, aes(x = start_date, y = factor(R0), fill = loglikelihood)) +
   geom_tile(color = "white") +
   scale_fill_distiller(palette = "RdBu", oob = scales::squish) + #  limits = scales) + 
@@ -344,13 +372,13 @@ samples <- 10000
 sampled_indices <- sample(1:nrow(df_long), 
                           size = 10000,
                           replace = TRUE,
-                          prob = exp(df_long$loglikelihood))
-sampled_data <- df_long[sampled_indices, c("R0", "start_date", "loglikelihood")] 
+                          prob = df_long$Probability)
+sampled_data <- df_long[sampled_indices, c("R0", "StartDate", "Value")] 
 
 ## Marginal for R0
 avg_R0_values <- sampled_data %>%
   group_by(R0) %>%
-  summarise(AvgValue = mean(loglikelihood))
+  summarise(AvgValue = mean(Value))
 sampled_data_R0 <- sampled_data %>%
   left_join(avg_R0_values, by = "R0")
 sampled_data_R0$R0 <- as.factor(sampled_data_R0$R0)
