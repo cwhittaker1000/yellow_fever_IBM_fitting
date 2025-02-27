@@ -6,6 +6,14 @@ weight_particles_poisson <- function(particle_values, observed) {
               raw_weights = likelihoods))
 }
 
+weight_particles_negative_binomial <- function(particle_values, observed, negative_binomial_size) {
+  likelihoods <- dnbinom(x = observed, mu = particle_values, size = negative_binomial_size)
+  normalised_weights <- likelihoods / sum(likelihoods)
+  return(list(normalised_weights = normalised_weights,
+              raw_weights = likelihoods))
+}
+
+
 ## Running the particle filter
 r_loglike <- function(params, data, misc) {
   
