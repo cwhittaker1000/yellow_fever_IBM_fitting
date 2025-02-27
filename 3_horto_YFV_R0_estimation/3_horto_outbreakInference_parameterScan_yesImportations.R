@@ -395,6 +395,8 @@ R0_marginal_plot <- ggplot(sampled_data_R0, aes(x = R0, fill = AvgValue)) +
   annotate("text", x = 0.75, y = 2000,
            label = "R0: Basic Reproduction Number", hjust = 0, fontface = "bold", size = 5)
 
+cowplot::plot_grid(R0_marginal_plot, )
+
 ## Marginal for start date
 avg_start_date_values <- sampled_data %>%
   group_by(StartDate) %>%
@@ -422,10 +424,11 @@ marginals_plot <- cowplot::plot_grid(R0_marginal_plot + theme(legend.position = 
 
 marginals_plot_with_legend <- cowplot::plot_grid(marginals_plot, marginals_legend, nrow = 1, rel_widths = c(4, 1))
 
-inference_overall <- cowplot::plot_grid(inferred_parameters_plot + theme(legend.position = "none"), 
-                                        marginals_plot_with_legend)
+inference_overall <- cowplot::plot_grid(inferred_parameters_plot, 
+                                        marginals_plot + theme(legend.position = "none"))
 
 ## Plotting the inferred deaths trajectories
+samples <- 10000
 sampled_output_matrix <- matrix(nrow = samples, ncol = length(horto_df_fitting$count))
 for (i in 1:samples) {
   R0 <- unlist(sampled_data[i, "R0"])
@@ -434,16 +437,21 @@ for (i in 1:samples) {
   start_date <- start_date$StartDate
   start_date_index <- which(colnames(loglik_avg) == paste0("start=", start_date))
   k <- sample(1:iterations, 1)
-  sampled_output_matrix[i, ] <- output_matrix[k, R0_index, start_date_index, ]
+  sampled_output_matrix[i, ] <- output_matrix[k, R0_index, start_date_index, 1, 1, ]
 }
 
 lower <- apply(sampled_output_matrix, 2, quantile, 0.025)
 upper <- apply(sampled_output_matrix, 2, quantile, 0.975)
+min <- apply(sampled_output_matrix, 2, min)
+max <- apply(sampled_output_matrix, 2, max)
 mean <- apply(sampled_output_matrix, 2, mean)
 output_df <- data.frame(time = horto_df_fitting$date_collection, 
                         observed = horto_df_fitting$count, 
                         mean = mean, 
-                        lower = lower, upper = upper)
+                        lower = lower, 
+                        upper = upper,
+                        min = min,
+                        max = max)
 "#948D9B"
 "#63A375"
 "#AFD5AA"
@@ -454,16 +462,18 @@ outbreak_inference_plot <- ggplot(output_df, aes(x = time)) +
   geom_ribbon(aes(ymin = lower, ymax = upper), fill = "#AFD5AA", alpha = 0.2) +
   geom_line(aes(y = mean), color = "#AFD5AA", size = 0.75) +
   geom_point(aes(y = observed), color = "black", size = 2) +
-  labs(x = "Date", y = "Daily Reported\nNHP Deaths") +
+  labs(x = "", y = "Daily Reported\nNHP Deaths") +
   scale_y_continuous(breaks = c(0, 2, 4, 6, 8, 10)) +
-  scale_x_date(date_breaks = "1 week") +
+  scale_x_date(date_breaks = "1 week",
+               limits = c(as.Date("2017-11-15"), NA)) +
   theme_bw() +
   theme(text = element_text(size = 12),
         plot.title = element_text(hjust = 0.5),
+        axis.title.x = element_blank(),
         axis.text.x = element_text(angle = 45, hjust = 1))
 
-cowplot::plot_grid(outbreak_inference_plot, inference_overall, nrow = 2, rel_heights = c(1, 1.55), 
-                   labels = c("A", "B"), align = "hv")
+cowplot::plot_grid(outbreak_inference_plot, inference_overall, nrow = 2, rel_heights = c(1, 1.45), 
+                   labels = c("A", "B"), align = "v", axis = "r")
 
 ##########################################################
 # lower <- apply(sampled_output_matrix, 2, min)
