@@ -1,5 +1,5 @@
 ## Particle weighting scheme
-weight_particles <- function(particle_values, observed) {
+weight_particles_poisson <- function(particle_values, observed) {
   likelihoods <- dpois(x = observed, lambda = particle_values)
   normalised_weights <- likelihoods / sum(likelihoods)
   return(list(normalised_weights = normalised_weights,
@@ -20,6 +20,20 @@ r_loglike <- function(params, data, misc) {
   }
   if (length(misc$likelihood) < 1) {
     stop("misc$likelihood must contain at least one of 'epidemiological', 'importations', 'start_date'.")
+  }
+  
+  # Checking likelihood distributions are valid
+  valid_distributions <- c("poisson", "negative_binomial")
+  if (!all(misc$likelihood_distribution %in% valid_likelihoods)) {
+    stop("misc$likelihood can only contain 'poisson' or 'negative_binomial'.")
+  }
+  if (length(misc$likelihood_distribution) > 1) {
+    stop("misc$likelihood_distribution must contain only 1 element.")
+  }
+  if (misc$likelihood_distribution == "negative_binomial") {
+    if(is.na(match("negative_binomial_size", names(misc)))) {
+      stop("if likelihood distribution is negative binomial, must also specify negative_binomial_size")
+    }
   }
   
   ## Converting R0 to model input beta (which varies according to transmission type assumption)
@@ -113,7 +127,13 @@ r_loglike <- function(params, data, misc) {
     num_deaths_timestep_particle2 <- deaths_df[, i]
     to_replace <- sum(num_deaths_timestep_particle2 == 0)
     num_deaths_timestep_particle2[num_deaths_timestep_particle2 == 0] <- rexp(to_replace, rate = misc$exponential_noise_rate) 
-    eval_loglik <- weight_particles(num_deaths_timestep_particle2, data$daily_incidence[i])
+    if (misc$likelihood_distribution == "poisson") {
+      eval_loglik <- weight_particles_poisson(num_deaths_timestep_particle2, data$daily_incidence[i])
+    } else if (misc$likelihood_distribution == "negative_binomial") {
+      eval_loglik <- weight_particles_negative_binomial(num_deaths_timestep_particle2, data$daily_incidence[i], misc$negative_binomial_size)
+    } else {
+      stop("likelihood distribution must be poisson or negative binomial")
+    }
     
     ## Resampling particles using the weights
     resampled_indices <- sample(1:misc$particles, prob = eval_loglik$normalised_weights, replace = TRUE)
