@@ -19,7 +19,7 @@ EIP_gamma_fit <- readRDS("outputs/EIP_adultMice_gammaParams_25degrees.rds")
 EIP_gamma_shape <- EIP_gamma_fit$gamma_a
 EIP_gamma_rate <- EIP_gamma_fit$gamma_b
 
-exposure_death_delay <- round((latent_period_gamma_shape / latent_period_gamma_rate) + 
+generation_time <- round((latent_period_gamma_shape / latent_period_gamma_rate) + 
   (infectious_period_gamma_shape / infectious_period_gamma_rate) +
   (EIP_gamma_shape / EIP_gamma_rate) +
   (1 / death_observation_gamma_rate))
@@ -54,7 +54,7 @@ dt <- 0.2
 initial_infections <- 1
 gamma <- 1 / (infectious_period_gamma_shape / infectious_period_gamma_rate)
 importations <- 18 # from the genomic data
-importation_last_date <- max(horto_df_fitting$date_collection) - exposure_death_delay # upper bound assumed to be 1 generation time before the final monkey death
+importation_last_date <- max(horto_df_fitting$date_collection) - generation_time # upper bound assumed to be 1 generation time before the final monkey death
 
 ## Parameters for initial particle filtering to identify parameter regime of highest likelihood
 R0_scan <- c(2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16)
