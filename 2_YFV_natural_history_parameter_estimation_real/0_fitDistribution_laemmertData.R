@@ -40,12 +40,16 @@ df_real <- tibble(days_death_post_infection = df$days_death_post_infection[!is.n
 df_both <- df_sim %>% 
   bind_rows(df_real)
 a <- ggplot(df_both, aes(x=days_death_post_infection, colour=type)) +
-  geom_density() +
+  geom_density(size = 1) +
   # geom_vline(xintercept = 10, linetype=2) +
   scale_x_continuous(limits = c(0, 15)) +
-  scale_color_brewer("Data", palette = "Dark2") +
-  xlab("Days from exposure to death") +
-  ylab("Density")
+  scale_colour_manual(values = c("#0B6E4F", "grey"),
+                      labels = c("Actual", "Simulated")) +
+  xlab("Days from exposure\nto death") +
+  ylab("Density") +
+  theme_bw(base_family = "sans") + 
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank())
+
 mean(df$days_death_post_infection)
 median(df$days_death_post_infection)
 mean(days_sim)
@@ -75,12 +79,16 @@ df_real <- tibble(days_virus_post_infection = df$days_virus_post_infection[!is.n
 df_both <- df_sim %>% 
   bind_rows(df_real)
 b <- ggplot(df_both, aes(x=days_virus_post_infection, colour=type)) +
-  geom_density() +
+  geom_density(size = 1) +
   # geom_vline(xintercept = 10, linetype=2) +
   scale_x_continuous(limits = c(0, 15)) +
-  scale_color_brewer("Data", palette = "Dark2") +
-  xlab("Days from exposure to infectious") +
-  ylab("Density")
+  scale_colour_manual(values = c("#0B6E4F", "grey"),
+                      labels = c("Actual", "Simulated")) +
+  xlab("Days from exposure to\ndetectable virus") +
+  ylab("Proportion of Monkeys")  +
+  theme_bw(base_family = "sans") + 
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank())
+
 mean(df$days_virus_post_infection)
 median(df$days_virus_post_infection)
 mean(days_sim)
@@ -110,12 +118,18 @@ df_real <- tibble(days_death_post_virus = df$days_death_post_virus,
 df_both <- df_sim %>% 
   bind_rows(df_real)
 c <- ggplot(df_both, aes(x=days_death_post_virus, colour=type)) +
-  geom_density() +
-  # geom_vline(xintercept = 10, linetype=2) +
+  geom_density(size = 1) +
   scale_x_continuous(limits = c(0, 15)) +
-  scale_color_brewer("Data", palette = "Dark2") +
-  xlab("Days from infectious to death") +
-  ylab("Density")
+  scale_colour_manual(values = c("#0B6E4F", "grey"),
+                      labels = c("Actual", "Simulated"),
+                      name = "") +
+  xlab("Days from detectable virus\nto death") +
+  ylab("Proportion of Monkeys") +
+  theme_bw(base_family = "sans") + 
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
+        legend.position = c(0.98, 0.98),  
+        legend.justification = c(1, 1))
+
 mean(df$days_death_post_virus)
 median(df$days_death_post_virus)
 mean(days_sim)
@@ -123,8 +137,14 @@ median(days_sim)
 
 plot_legend <- cowplot::get_legend(c)
 
-cowplot::plot_grid(a + theme(legend.position = "none"), 
-                   b + theme(legend.position = "none"),
-                   c + theme(legend.position = "none"),
-                   plot_legend, nrow = 1, rel_widths = c(1, 1, 1, 0.2), 
-                   labels = c("A", "B", "C"))
+first_part <- cowplot::plot_grid(a + theme(legend.position = "none"), 
+                                 b + theme(legend.position = "none"), 
+                                 c, 
+                                 labels = c("a", "b", "c"),
+                                 nrow = 1)
+
+ggsave(filename = "2_YFV_natural_history_parameter_estimation_real/figures/SI_NHP_NatHist.pdf",
+       plot = first_part,
+       width = 12, height = 4)
+
+
