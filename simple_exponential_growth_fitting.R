@@ -1,3 +1,7 @@
+horto_df <- readRDS("data/processed_HortoData.rds") %>%
+  filter(!is.na(zone_peal)) %>%
+  filter(final_yfv_result != "negative")
+epi_curve <- incidence::incidence(horto_df$date_collection)
 x <- as.vector(epi_curve$counts)[1:80]
 
 results_list <- lapply(1:64, function(n) {
@@ -33,6 +37,18 @@ results_list <- lapply(1:64, function(n) {
 results_df <- do.call(rbind, results_list)
 head(results_df)
 
+tau <- log(2) / results_df$b
+
+plot(x[63:80])
+
 exp(results_df$b * 19)
+(1 + results_df$b * 19)
+(1 + results_df$b * 17) * (1 + results_df$b * 2)
+
+1 + (log(2) * 19) / 6.217760
+### all of this is implying the R0 is lower - doubling time of approx 6ish days.
+### With Tg of 19 days (exponentially distributed, as in SIR model), implies R0 of 3ish.
+
+
 
 

@@ -47,6 +47,14 @@ summary(fit)
 saveRDS(fit, "outputs/deathObservation_distGamma_stanFit.rds")
 hist(rgamma(10000, rstan::extract(fit, "a")[[1]], rstan::extract(fit, "b")[[1]]), breaks = 50)
 
+df_gamma <- lapply(seq_along(1:1000), function(i) {
+  x_vals <- seq(0, 15, by = 0.5)
+  data.frame(i = i, x = x_vals,
+             pdfval = dgamma(x_vals, shape = rstan::extract(fit, "a")[[1]][i], 
+                             rate = rstan::extract(fit, "b")[[1]][i]))}) %>%
+  bind_rows()
+
+
 ## Fitting the time between infection and death - Exponential distribution
 model2 <- stan_model("2_YFV_natural_history_parameter_estimation_real/models/observation_time_exp.stan")
 data_stan2 <- list(N = nrow(df) - 1,
@@ -57,6 +65,12 @@ hist(rstan::extract(fit2, "days_simulated")[[1]], breaks = 50)
 summary(fit2)
 saveRDS(fit2, "outputs/deathObservation_distExp_stanFit.rds")
 hist(rexp(10000, rstan::extract(fit2, "a")[[1]]), breaks = 50)
+
+df_exp <- lapply(seq_along(1:1000), function(i) {
+  x_vals <- seq(0, 15, by = 0.5)
+  data.frame(i = i, x = x_vals,
+             pdfval = dexp(x_vals, rate = rstan::extract(fit2, "a")[[1]][i]))}) %>%
+  bind_rows()
 
 ## Comparing them to empirical distribution and calculating which fits better
 df_sim_gamma <- tibble(obs_delay = rstan::extract(fit, "days_simulated")[[1]], iteration = seq_along(fit), type = "simulatedGamma")
@@ -94,8 +108,8 @@ death_obs_delay_plot <- ggplot() +
            aes(x = obs_delay, y = normalized_count, fill = "empirical"), 
            stat = "identity", alpha = 1, width = 0.7) +
   # Density for simulated gamma and exponential
-  geom_density(data = df_overall %>% filter(type %in% c("simulatedGamma", "simulatedExp")),
-               aes(x = obs_delay, colour = type), 
+  geom_density(data = df_overall %>% filter(type %in% c("simulatedExp")),
+               aes(x = obs_delay), 
                size = 1, adjust = 1) +
   # Aesthetic adjustments
   scale_x_continuous(limits = c(-1, 15), breaks = seq(0, 15, 1)) +
@@ -104,5 +118,37 @@ death_obs_delay_plot <- ggplot() +
   scale_fill_manual("Data", values = c("empirical" = "#948D9B")) +
   xlab("Days from death to observation") +
   ylab("Density (Simulated) or Normalized Count (Empirical)") +
-  theme(legend.position = "right")
+  theme(legend.position = "right") +
+  theme_bw(base_family = "sans") + 
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
+        # legend.position = c(0.98, 0.98),  
+        # legend.justification = c(1, 1),
+        legend.position = "none")
+
+deaths_obs_delay_plot2 <- ggplot() +
+  # Normalized bar plot for empirical data
+  geom_bar(data = df_empirical_counts,
+           aes(x = obs_delay, y = normalized_count, fill = "empirical"), 
+           stat = "identity", alpha = 1, width = 0.7) +
+  # Density for simulated gamma and exponential
+  geom_line(data = df_exp,
+               aes(x = x, y = pdfval, group = i), alpha = 0.025, 
+               size = 1, adjust = 1, col = "#80C498") +
+  # Aesthetic adjustments
+  scale_x_continuous(limits = c(-1, 15), breaks = seq(0, 15, 1)) +
+  scale_y_continuous(name = "Density / Normalized Count") +
+  scale_color_brewer("Density Data", palette = "Dark2") +
+  scale_fill_manual("Data", values = c("empirical" = "#948D9B")) +
+  xlab("Days from death to observation") +
+  ylab("Density (Simulated) or Normalized Count (Empirical)") +
+  theme(legend.position = "right") +
+  theme_bw(base_family = "sans") + 
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
+        # legend.position = c(0.98, 0.98),  
+        # legend.justification = c(1, 1),
+        legend.position = "none")
+
+ggsave(filename = "2_YFV_natural_history_parameter_estimation_real/figures/SI_NHP_DeathObs.pdf",
+       plot = deaths_obs_delay_plot2,
+       width = 4, height = 4)
 

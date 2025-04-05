@@ -30,30 +30,32 @@ hist(rstan::extract(fit, "days_simulated")[[1]], breaks = 50)
 summary(fit)
 saveRDS(fit, "outputs/infection_deathDist_stanFit.rds")
 
-## Comparing fit to empirical
-days_sim <- rstan::extract(fit, "days_simulated")[[1]]
-df_sim <- tibble(days_death_post_infection = days_sim, iteration = seq_along(days_sim)) %>% 
-  mutate(type = "simulated")
+df_gamma <- lapply(seq_along(1:1000), function(i) {
+  x_vals <- seq(0, 15, by = 0.5)
+  data.frame(i = i, x = x_vals,
+             pdfval = dgamma(x_vals, shape = rstan::extract(fit, "a")[[1]][i], 
+                             rate = rstan::extract(fit, "b")[[1]][i]))}) %>%
+  bind_rows()
 df_real <- tibble(days_death_post_infection = df$days_death_post_infection[!is.na(days_death_post_infection)], 
                   iteration = 1:10,
-                  type = "actual")
-df_both <- df_sim %>% 
-  bind_rows(df_real)
-a <- ggplot(df_both, aes(x=days_death_post_infection, colour=type)) +
-  geom_density(size = 1) +
-  # geom_vline(xintercept = 10, linetype=2) +
-  scale_x_continuous(limits = c(0, 15)) +
-  scale_colour_manual(values = c("#0B6E4F", "grey"),
-                      labels = c("Actual", "Simulated")) +
-  xlab("Days from exposure\nto death") +
-  ylab("Density") +
-  theme_bw(base_family = "sans") + 
-  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank())
+                  type = "actual")  %>%
+  count(days_death_post_infection) %>% # Count occurrences of each day
+  mutate(normalized_count = n / sum(n)) # Normalize by total counts
 
-mean(df$days_death_post_infection)
-median(df$days_death_post_infection)
-mean(days_sim)
-median(days_sim)
+a <- ggplot() +
+  geom_bar(data = df_real,
+           aes(x = days_death_post_infection, y = normalized_count, fill = "empirical"), 
+           stat = "identity", alpha = 1, width = 0.7, fill = "#948D9B") +
+  geom_line(data = df_gamma,
+            aes(x = x, y = pdfval, group = i), alpha = 0.05, 
+            size = 1, adjust = 1, col = "#80C498") +
+  scale_x_continuous(breaks = seq(0, 15, 1)) +
+  scale_y_continuous(name = "Density / Normalized Count") +
+  xlab("Days from infection to death") +
+  ylab("Density (Simulated) or Normalized Count (Empirical)") +
+  theme_bw(base_family = "sans") + 
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
+        legend.position = "none")
 
 ## Fitting the time between infection and death
 data_stan <- list(N = nrow(df),
@@ -69,30 +71,32 @@ hist(rstan::extract(fit, "days_simulated")[[1]], breaks = 50)
 summary(fit)
 saveRDS(fit, "outputs/exposure_infectiousDist_stanFit.rds")
 
-## Comparing fit to empirical
-days_sim <- rstan::extract(fit, "days_simulated")[[1]]
-df_sim <- tibble(days_virus_post_infection = days_sim, iteration = seq_along(days_sim)) %>% 
-  mutate(type = "simulated")
-df_real <- tibble(days_virus_post_infection = df$days_virus_post_infection[!is.na(days_virus_post_infection)], 
+df_gamma <- lapply(seq_along(1:1000), function(i) {
+  x_vals <- seq(0, 15, by = 0.5)
+  data.frame(i = i, x = x_vals,
+             pdfval = dgamma(x_vals, shape = rstan::extract(fit, "a")[[1]][i], 
+                             rate = rstan::extract(fit, "b")[[1]][i]))}) %>%
+  bind_rows()
+df_real <- tibble(days_virus_post_infection = df$days_virus_post_infection[!is.na(df$days_virus_post_infection)], 
                   iteration = 1:10,
-                  type = "actual")
-df_both <- df_sim %>% 
-  bind_rows(df_real)
-b <- ggplot(df_both, aes(x=days_virus_post_infection, colour=type)) +
-  geom_density(size = 1) +
-  # geom_vline(xintercept = 10, linetype=2) +
-  scale_x_continuous(limits = c(0, 15)) +
-  scale_colour_manual(values = c("#0B6E4F", "grey"),
-                      labels = c("Actual", "Simulated")) +
-  xlab("Days from exposure to\ndetectable virus") +
-  ylab("Proportion of Monkeys")  +
-  theme_bw(base_family = "sans") + 
-  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank())
+                  type = "actual") %>%
+  count(days_virus_post_infection) %>% # Count occurrences of each day
+  mutate(normalized_count = n / sum(n)) # Normalize by total counts
 
-mean(df$days_virus_post_infection)
-median(df$days_virus_post_infection)
-mean(days_sim)
-median(days_sim)
+b <- ggplot() +
+  geom_bar(data = df_real,
+           aes(x = days_virus_post_infection, y = normalized_count, fill = "empirical"), 
+           stat = "identity", alpha = 1, width = 0.7, fill = "#948D9B") +
+  geom_line(data = df_gamma,
+            aes(x = x, y = pdfval, group = i), alpha = 0.05, 
+            size = 1, adjust = 1, col = "#D6BD94") +
+  scale_x_continuous(breaks = seq(0, 15, 1)) +
+  scale_y_continuous(name = "Density / Normalized Count") +
+  xlab("Days from infection to detectable virus") +
+  ylab("Density (Simulated) or Normalized Count (Empirical)") +
+  theme_bw(base_family = "sans") + 
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
+        legend.position = "none")
 
 ## Fitting the time between infectiousness (virus detectable) and death
 data_stan <- list(N = nrow(df),
@@ -108,34 +112,33 @@ hist(rstan::extract(fit, "days_simulated")[[1]], breaks = 50)
 summary(fit)
 saveRDS(fit, "outputs/infectious_deathDist_stanFit.rds")
 
-## Comparing fit to empirical
-days_sim <- rstan::extract(fit, "days_simulated")[[1]]
-df_sim <- tibble(days_death_post_virus = days_sim, iteration = seq_along(days_sim)) %>% 
-  mutate(type = "simulated")
+df_gamma <- lapply(seq_along(1:1000), function(i) {
+  x_vals <- seq(0, 15, by = 0.5)
+  data.frame(i = i, x = x_vals,
+             pdfval = dgamma(x_vals, shape = rstan::extract(fit, "a")[[1]][i], 
+                             rate = rstan::extract(fit, "b")[[1]][i]))}) %>%
+  bind_rows()
+
 df_real <- tibble(days_death_post_virus = df$days_death_post_virus, 
                   iteration = 1:10,
-                  type = "actual")
-df_both <- df_sim %>% 
-  bind_rows(df_real)
-c <- ggplot(df_both, aes(x=days_death_post_virus, colour=type)) +
-  geom_density(size = 1) +
-  scale_x_continuous(limits = c(0, 15)) +
-  scale_colour_manual(values = c("#0B6E4F", "grey"),
-                      labels = c("Actual", "Simulated"),
-                      name = "") +
-  xlab("Days from detectable virus\nto death") +
-  ylab("Proportion of Monkeys") +
+                  type = "actual") %>%
+  count(days_death_post_virus) %>% # Count occurrences of each day
+  mutate(normalized_count = n / sum(n)) # Normalize by total counts
+
+c <- ggplot() +
+  geom_bar(data = df_real,
+           aes(x = days_death_post_virus, y = normalized_count, fill = "empirical"), 
+           stat = "identity", alpha = 1, width = 0.7, fill = "#948D9B") +
+  geom_line(data = df_gamma,
+            aes(x = x, y = pdfval, group = i), alpha = 0.05, 
+            size = 1, adjust = 1, col = "#D67663") +
+  scale_x_continuous(breaks = seq(0, 15, 1)) +
+  scale_y_continuous(name = "Density / Normalized Count") +
+  xlab("Days from detectable virus to death") +
+  ylab("Density (Simulated) or Normalized Count (Empirical)") +
   theme_bw(base_family = "sans") + 
   theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
-        legend.position = c(0.98, 0.98),  
-        legend.justification = c(1, 1))
-
-mean(df$days_death_post_virus)
-median(df$days_death_post_virus)
-mean(days_sim)
-median(days_sim)
-
-plot_legend <- cowplot::get_legend(c)
+        legend.position = "none")
 
 first_part <- cowplot::plot_grid(a + theme(legend.position = "none"), 
                                  b + theme(legend.position = "none"), 

@@ -109,6 +109,11 @@ ggsave(filename = "2_YFV_natural_history_parameter_estimation_real/figures/SI_EI
        plot = overall,
        width = 5, height = 7)
 
+overall <- cowplot::plot_grid(a, b, labels = c("a", "b"), nrow = 1)
+ggsave(filename = "2_YFV_natural_history_parameter_estimation_real/figures/SI_EIP_figure_alt.pdf",
+       plot = overall,
+       width = 10, height = 3.5)
+
 # mean(rstan::extract(fit_adults25, "days_simulated")[[1]])
 # pmin_adults25 <- mean(rstan::extract(fit_adults25, "p_death_min")[[1]])
 # pmax_adults25<- mean(rstan::extract(fit_adults25, "p_death_difference")[[1]])
