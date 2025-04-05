@@ -74,13 +74,14 @@ startdatelikelihood_matrix <- array(data = NA, dim = c(iterations, length(R0_sca
 importations_matrix <- array(data = NA, dim = c(iterations, length(R0_scan), length(start_date_scan), length(transmission_type_scan), length(exponential_noise_scan)))
 final_size_matrix <- array(data = NA, dim = c(iterations, length(R0_scan), length(start_date_scan), length(transmission_type_scan), length(exponential_noise_scan)))
 output_matrix <- array(data = NA, dim = c(iterations, length(R0_scan), length(start_date_scan), length(transmission_type_scan), length(exponential_noise_scan), length(horto_df_fitting$count)))
+inferred_total_deaths_matrix <- array(data = NA, dim = c(iterations, length(R0_scan), length(start_date_scan), length(transmission_type_scan), length(exponential_noise_scan), length(horto_df_fitting$count)))
 
 overall_seed <- 10
 set.seed(overall_seed)
 simulation_seeds <- array(data = rnbinom(n = iterations * length(R0_scan) * length(start_date_scan) * length(transmission_type_scan) * length(exponential_noise_scan), 
                                          mu = 10^6, size = 1), 
                           dim = c(length(R0_scan), length(start_date_scan), length(transmission_type_scan), length(exponential_noise_scan), iterations))
-fresh_run <- TRUE
+fresh_run <- FALSE
 if (fresh_run) {
   
   ## Looping through R0
@@ -158,6 +159,7 @@ if (fresh_run) {
           padding_zeroes <- rep(0, as.numeric(start_date_scan[j] - start_date_scan[1]))
           for (m in 1:iterations) {
             output_matrix[m, i, j, k, l, ] <- c(padding_zeroes, result_parallel[[m]]$deaths_trajectory)
+            inferred_total_deaths_matrix[m, i, j, k, l, ] <- c(padding_zeroes, result_parallel[[m]]$all_deaths_trajectory)
             final_size_matrix[m, i, j, k, l] <- sum(result_parallel[[m]]$deaths_trajectory)
             loglikelihood_matrix[m, i, j, k, l] <- result_parallel[[m]]$loglikelihood
             epilikelihood_matrix[m, i, j, k, l] <- result_parallel[[m]]$likelihood_components$epi
@@ -182,7 +184,9 @@ if (fresh_run) {
     
   }
   
-  saveRDS(list(output = output_matrix, final_size = final_size_matrix, 
+  saveRDS(list(output = output_matrix,
+               inferred_total_deaths_matrix = inferred_total_deaths_matrix,
+               final_size = final_size_matrix, 
                loglike = loglikelihood_matrix, epilikelihood_matrix = epilikelihood_matrix,
                importlikelihood_matrix = importlikelihood_matrix, startdatelikelihood_matrix = startdatelikelihood_matrix, 
                importations = importations_matrix),
@@ -190,8 +194,12 @@ if (fresh_run) {
   
 } else {
   
-  temp <- readRDS("3_horto_YFV_R0_estimation/parameterScan_hortoEstimation_YesImportations.rds")
+  temp <- readRDS("3_horto_YFV_R0_estimation/NewTester_parameterScan_hortoEstimation_YesImportations.rds")
   loglikelihood_matrix <- temp$loglike
+  epilikelihood_matrix <- temp$epilikelihood_matrix
+  importlikelihood_matrix <- temp$importlikelihood_matrix
+  startdatelikelihood_matrix <- temp$startdatelikelihood_matrix
+  importations <- temp$importations
   output_matrix <- temp$output
 }
 
@@ -207,21 +215,22 @@ df_long <- as.data.frame.table(loglik_avg, responseName = "loglikelihood") %>%
   mutate(start_date = as.Date(gsub("s", "", start_date))) %>%
   filter(exponential_noise == "10")
 head(df_long)
-scales <- c(-100, -60)
-ggplot(df_long, aes(x = start_date, y = factor(R0), fill = loglikelihood)) +
+scales <- c(-100, -70)
+overall_likelihood_plot <- ggplot(df_long, aes(x = start_date, y = factor(R0), fill = loglikelihood)) +
   geom_tile(color = "white") +
-  scale_fill_distiller(palette = "RdBu") + # , oob = scales::squish, limits = scales) + 
+  scale_fill_distiller(palette = "RdBu", oob = scales::squish, limits = scales) + 
   labs(x = "Start Date",
        y = expression(R[0]),
        fill = "Avg.\nLoglike") +
   scale_x_date(expand = c(0, 0)) +  # Remove whitespace on the x-axis
   scale_y_discrete(expand = c(0, 0)) +  # Remove whitespace on the y-axis
   theme_bw() +
-  facet_grid(transmission_type ~ exponential_noise) +
+  # facet_grid(transmission_type ~ exponential_noise) +
   theme(# axis.text.x = element_text(angle = 45, hjust = 1),
     plot.title = element_text(hjust = 0.5, face = "bold"),
     legend.position = "right")
 
+## Epilikelihood plot
 epi_loglik_avg <- apply(epilikelihood_matrix, c(2, 3, 4 ,5), mean)
 dimnames(epi_loglik_avg) <- list(
   R0 = R0_scan,                   # use your R0_scan vector here
@@ -234,7 +243,7 @@ df_long <- as.data.frame.table(epi_loglik_avg, responseName = "loglikelihood") %
   filter(exponential_noise == "10")
 head(df_long)
 scales <- c(-100, -60)
-ggplot(df_long, aes(x = start_date, y = factor(R0), fill = loglikelihood)) +
+epilikelihood_plot <- ggplot(df_long, aes(x = start_date, y = factor(R0), fill = loglikelihood)) +
   geom_tile(color = "white") +
   scale_fill_distiller(palette = "RdBu") + # , oob = scales::squish, limits = scales) + 
   labs(x = "Start Date",
@@ -243,12 +252,10 @@ ggplot(df_long, aes(x = start_date, y = factor(R0), fill = loglikelihood)) +
   scale_x_date(expand = c(0, 0)) +  # Remove whitespace on the x-axis
   scale_y_discrete(expand = c(0, 0)) +  # Remove whitespace on the y-axis
   theme_bw() +
-  facet_grid(transmission_type ~ exponential_noise) +
+  # facet_grid(transmission_type ~ exponential_noise) +
   theme(# axis.text.x = element_text(angle = 45, hjust = 1),
     plot.title = element_text(hjust = 0.5, face = "bold"),
     legend.position = "right")
-
-## Epidemiological likelihood
 
 ## Importations likelihood
 importation_lik_avg <- apply(importlikelihood_matrix, c(2, 3, 4 ,5), mean)
@@ -263,7 +270,7 @@ df_long_import <- as.data.frame.table(importation_lik_avg, responseName = "logli
   filter(exponential_noise == "10")
 head(df_long_import)
 scales <- c(-100, -50)
-ggplot(df_long_import, aes(x = start_date, y = factor(R0), fill = loglikelihood)) +
+importations_likelihood_plot <- ggplot(df_long_import, aes(x = start_date, y = factor(R0), fill = loglikelihood)) +
   geom_tile(color = "white") +
   scale_fill_distiller(palette = "RdBu", oob = scales::squish) + #  limits = scales) + 
   labs(x = "Start Date",
@@ -272,7 +279,7 @@ ggplot(df_long_import, aes(x = start_date, y = factor(R0), fill = loglikelihood)
   scale_x_date(expand = c(0, 0)) +  # Remove whitespace on the x-axis
   scale_y_discrete(expand = c(0, 0)) +  # Remove whitespace on the y-axis
   theme_bw() +
-  facet_grid(transmission_type ~ exponential_noise) +
+  # facet_grid(transmission_type ~ exponential_noise) +
   theme(# axis.text.x = element_text(angle = 45, hjust = 1),
     plot.title = element_text(hjust = 0.5, face = "bold"),
     legend.position = "right")
@@ -289,7 +296,7 @@ df_long_start <- as.data.frame.table(startdate_lik_avg, responseName = "loglikel
   mutate(start_date = as.Date(gsub("s", "", start_date)))
 head(df_long)
 scales <- c(-100, -60)
-ggplot(df_long_start, aes(x = start_date, y = factor(R0), fill = loglikelihood)) +
+start_date_likelihood_plot <- ggplot(df_long_start, aes(x = start_date, y = factor(R0), fill = loglikelihood)) +
   geom_tile(color = "white") +
   scale_fill_distiller(palette = "RdBu", oob = scales::squish) + #  limits = scales) + 
   labs(x = "Start Date",
@@ -298,22 +305,27 @@ ggplot(df_long_start, aes(x = start_date, y = factor(R0), fill = loglikelihood))
   scale_x_date(expand = c(0, 0)) +  # Remove whitespace on the x-axis
   scale_y_discrete(expand = c(0, 0)) +  # Remove whitespace on the y-axis
   theme_bw() +
-  facet_grid(transmission_type ~ exponential_noise) +
+  # facet_grid(transmission_type ~ exponential_noise) +
   theme(# axis.text.x = element_text(angle = 45, hjust = 1),
     plot.title = element_text(hjust = 0.5, face = "bold"),
     legend.position = "right")
 
+cowplot::plot_grid(epilikelihood_plot + theme(legend.position = "none"), 
+                   start_date_likelihood_plot + theme(legend.position = "none"), 
+                   importations_likelihood_plot + theme(legend.position = "none"),
+                   overall_likelihood_plot + theme(legend.position = "none"), 
+                   nrow = 1)
 
 colnames(loglik_avg) <- paste0("start=", start_date_scan)
 rownames(loglik_avg) <- paste0("R0=", R0_scan)
 
-importations_avg <- apply(importations_matrix, c(2, 3), mean)
+importations_avg <- apply(importations, c(2, 3), mean)
 colnames(importations_avg) <- paste0("start=", start_date_scan)
 rownames(importations_avg) <- paste0("R0=", R0_scan)
 
 apply(importations_avg, 2, mean)
 
-imports <- apply(importations_matrix, c(2, 3, 4, 5), mean)
+imports <- apply(importations, c(2, 3, 4, 5), mean)
 dimnames(imports) <- list(
   R0 = R0_scan,                   # use your R0_scan vector here
   start_date = paste0("s", as.Date(start_date_scan)),
@@ -338,7 +350,7 @@ ggplot(df_long_imports, aes(x = start_date, y = factor(R0), fill = imports)) +
     legend.position = "right")
 ## lower R0 and later start date needs more imports
 
-scales <- c(-65, -50)
+# scales <- c(-65, -50)
 
 ## add in likelihood term for importations
 
@@ -355,7 +367,7 @@ df_long <- data.frame(R0 = R0_scan, loglik_avg) %>%
          Probability = Likelihood / sum(Likelihood))
 inferred_parameters_plot <- ggplot(df_long, aes(x = StartDate, y = factor(R0), fill = Value)) +
   geom_tile(color = "white") +
-  scale_fill_distiller(palette = "RdBu", limits = scales, oob = scales::squish) + 
+  scale_fill_distiller(palette = "RdBu") + #  limits = scales, oob = scales::squish) + 
   labs(x = "Start Date",
        y = expression(R[0]),
        fill = "Avg.\nLoglike") +
@@ -395,7 +407,7 @@ R0_marginal_plot <- ggplot(sampled_data_R0, aes(x = R0, fill = AvgValue)) +
   annotate("text", x = 0.75, y = 2000,
            label = "R0: Basic Reproduction Number", hjust = 0, fontface = "bold", size = 5)
 
-cowplot::plot_grid(R0_marginal_plot, )
+cowplot::plot_grid(R0_marginal_plot)
 
 ## Marginal for start date
 avg_start_date_values <- sampled_data %>%
@@ -430,14 +442,20 @@ inference_overall <- cowplot::plot_grid(inferred_parameters_plot,
 ## Plotting the inferred deaths trajectories
 samples <- 10000
 sampled_output_matrix <- matrix(nrow = samples, ncol = length(horto_df_fitting$count))
+sampled_Reff_matrix <- matrix(nrow = samples, ncol = length(horto_df_fitting$count))
 for (i in 1:samples) {
   R0 <- unlist(sampled_data[i, "R0"])
+  implied_beta_sim <- R0 * gamma / N
   R0_index <- which(rownames(loglik_avg) == paste0("R0=", R0))
   start_date <- sampled_data[i, "StartDate"]
   start_date <- start_date$StartDate
   start_date_index <- which(colnames(loglik_avg) == paste0("start=", start_date))
   k <- sample(1:iterations, 1)
   sampled_output_matrix[i, ] <- output_matrix[k, R0_index, start_date_index, 1, 1, ]
+  max_num_obs_deaths <- max(cumsum(output_matrix[k, R0_index, start_date_index, 1, 1, ]))
+  mod_factor <- N / max_num_obs_deaths
+  N_over_time <- N - (cumsum(output_matrix[k, R0_index, start_date_index, 1, 1, ]) * mod_factor) ## THIS IS A TEMPORARY FIX # need to output the inferred deaths, not just the observed ones 
+  sampled_Reff_matrix[i, ] <- N_over_time * implied_beta_sim / gamma
 }
 
 lower <- apply(sampled_output_matrix, 2, quantile, 0.025)
@@ -452,12 +470,7 @@ output_df <- data.frame(time = horto_df_fitting$date_collection,
                         upper = upper,
                         min = min,
                         max = max)
-"#948D9B"
-"#63A375"
-"#AFD5AA"
-"#729B79"
-"#DAFF7D"
-"#419D78"
+# "#948D9B""#63A375""#AFD5AA""#729B79""#DAFF7D""#419D78"
 outbreak_inference_plot <- ggplot(output_df, aes(x = time)) +
   geom_ribbon(aes(ymin = lower, ymax = upper), fill = "#AFD5AA", alpha = 0.2) +
   geom_line(aes(y = mean), color = "#AFD5AA", size = 0.75) +
@@ -474,6 +487,34 @@ outbreak_inference_plot <- ggplot(output_df, aes(x = time)) +
 
 cowplot::plot_grid(outbreak_inference_plot, inference_overall, nrow = 2, rel_heights = c(1, 1.45), 
                    labels = c("A", "B"), align = "v", axis = "r")
+
+
+lower_Reff <- apply(sampled_Reff_matrix, 2, quantile, 0.025)
+upper_Reff <- apply(sampled_Reff_matrix, 2, quantile, 0.975)
+min_Reff <- apply(sampled_Reff_matrix, 2, min)
+max_Reff <- apply(sampled_Reff_matrix, 2, max)
+mean_Reff <- apply(sampled_Reff_matrix, 2, mean)
+output_df <- data.frame(time = horto_df_fitting$date_collection, 
+                        observed = horto_df_fitting$count, 
+                        mean = mean_Reff, 
+                        lower = lower_Reff, 
+                        upper = upper_Reff,
+                        min = min_Reff,
+                        max = max_Reff)
+# "#948D9B""#63A375""#AFD5AA""#729B79""#DAFF7D""#419D78"
+ggplot(output_df, aes(x = time)) +
+  geom_ribbon(aes(ymin = lower, ymax = upper), fill = "#AFD5AA", alpha = 0.2) +
+  geom_line(aes(y = mean), color = "#AFD5AA", size = 0.75) +
+  geom_point(aes(y = observed), color = "black", size = 2) +
+  labs(x = "", y = "Daily Reported\nNHP Deaths") +
+  scale_y_continuous(breaks = c(0, 2, 4, 6, 8, 10)) +
+  scale_x_date(date_breaks = "1 week",
+               limits = c(as.Date("2017-11-15"), NA)) +
+  theme_bw() +
+  theme(text = element_text(size = 12),
+        plot.title = element_text(hjust = 0.5),
+        axis.title.x = element_blank(),
+        axis.text.x = element_text(angle = 45, hjust = 1))
 
 ##########################################################
 # lower <- apply(sampled_output_matrix, 2, min)
