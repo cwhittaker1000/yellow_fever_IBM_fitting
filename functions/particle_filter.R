@@ -32,8 +32,8 @@ r_loglike <- function(params, data, misc) {
   
   # Checking likelihood distributions are valid
   valid_distributions <- c("poisson", "negative_binomial")
-  if (!all(misc$likelihood_distribution %in% valid_likelihoods)) {
-    stop("misc$likelihood can only contain 'poisson' or 'negative_binomial'.")
+  if (!all(misc$likelihood_distribution %in% valid_distributions)) {
+    stop("misc$likelihood_distribution can only contain 'poisson' or 'negative_binomial'.")
   }
   if (length(misc$likelihood_distribution) > 1) {
     stop("misc$likelihood_distribution must contain only 1 element.")
@@ -86,8 +86,10 @@ r_loglike <- function(params, data, misc) {
                                 latent_period_gamma_rate = misc$latent_period_gamma_rate,
                                 infectious_period_gamma_shape = misc$infectious_period_gamma_shape, 
                                 infectious_period_gamma_rate = misc$infectious_period_gamma_rate,
-                                death_observation_gamma_shape = 1, 
-                                death_observation_gamma_rate = misc$death_observation_gamma_rate,
+                                death_observation_mixture_prob = misc$death_observation_mixture_prob,
+                                death_observation_mixture_exponential_rate = misc$death_observation_mixture_exponential_rate,
+                                death_observation_mixture_gamma_shape = misc$death_observation_mixture_gamma_shape, 
+                                death_observation_mixture_gamma_rate = misc$death_observation_mixture_gamma_rate,
                                 state = NULL)
         storage_list[[j]]$output <- temp$result
         
@@ -103,8 +105,10 @@ r_loglike <- function(params, data, misc) {
                                 latent_period_gamma_rate = misc$latent_period_gamma_rate,
                                 infectious_period_gamma_shape = misc$infectious_period_gamma_shape, 
                                 infectious_period_gamma_rate = misc$infectious_period_gamma_rate,
-                                death_observation_gamma_shape = 1, 
-                                death_observation_gamma_rate = misc$death_observation_gamma_rate,
+                                death_observation_mixture_prob = misc$death_observation_mixture_prob,
+                                death_observation_mixture_exponential_rate = misc$death_observation_mixture_exponential_rate,
+                                death_observation_mixture_gamma_shape = misc$death_observation_mixture_gamma_shape, 
+                                death_observation_mixture_gamma_rate = misc$death_observation_mixture_gamma_rate,
                                 state = storage_list[[j]]$state)
         
         start_row <- (i - 1) * (1 / misc$dt) + 1
@@ -179,141 +183,6 @@ r_loglike <- function(params, data, misc) {
               importations = importations))
   
 }
-
-## Running the particle filter
-# r_loglike_vector <- function(params, data, misc) {
-#   
-#   # Set.seed
-#   set.seed(misc$seed)
-#   misc$seed <- rpois(misc$particles, 1000000)
-#   
-#   # Checking likelihoods specified are valid
-#   valid_likelihoods <- c("epidemiological", "importations", "start_date")
-#   if (!all(misc$likelihood %in% valid_likelihoods)) {
-#     stop("misc$likelihood can only contain 'epidemiological', 'importations', and/or 'start_date'.")
-#   }
-#   if (length(misc$likelihood) < 1) {
-#     stop("misc$likelihood must contain at least one of 'epidemiological', 'importations', 'start_date'.")
-#   }
-#   
-#   ## Converting R0 to model input beta (which varies according to transmission type assumption)
-#   EIP_mean <- misc$EIP_gamma_shape / misc$EIP_gamma_rate
-#   NHP_dur_inf_mean <- misc$infectious_period_gamma_shape / misc$infectious_period_gamma_rate
-#   beta_sim <- (params["R0"] * (1 / NHP_dur_inf_mean) * misc$vector_mortality_rate) / ((10000 / misc$N) * exp(-misc$vector_mortality_rate * EIP_mean))
-#   
-#   ## Creating storage for model outputs
-#   deaths_df <- array(data = NA, dim = c(misc$particles, length(data$time)))
-#   deaths_df2 <- array(data = NA, dim = c(misc$particles, length(data$time)))
-#   loglikelihood <- vector(mode = "numeric", length = length(data$time))
-#   
-#   storage_list <- vector(mode = "list", length = misc$particles)
-#   num_rows_output <- length(data$time) * (1 / misc$dt)
-#   num_cols_output <- 4
-#   for (j in seq_len(misc$particles)) {
-#     storage_list[[j]] <- list(output = matrix(NA_real_, nrow = num_rows_output, ncol = num_cols_output), 
-#                               state = NULL)
-#   }
-#   
-#   ## Looping over timepoints
-#   for (i in 1:length(data$time)) {
-#     
-#     num_deaths_timestep_particle <- vector(mode = "double", length = misc$particles)
-#     
-#     ## Looping over particles
-#     for (j in 1:misc$particles) {
-#       
-#       ## If it's the first timestep, don't reload the state
-#       if (i == 1) {
-#         temp <- run_simulation_vector(seed = misc$seed[j], steps = 1 / misc$dt, dt = misc$dt, N = misc$N, 
-#                                       initial_infections = misc$initial_infections, death_obs_prop = misc$death_obs_prop,
-#                                       beta = beta_sim, importation_rate = misc$importation_rate,
-#                                       initial_run = TRUE, overall_run_length = misc$overall_run_length,
-#                                       latent_period_gamma_shape = misc$latent_period_gamma_shape, 
-#                                       EIP_gamma_shape = misc$EIP_gamma_shape,
-#                                       EIP_gamma_rate = misc$EIP_gamma_rate, 
-#                                       latent_period_gamma_rate = misc$latent_period_gamma_rate,
-#                                       infectious_period_gamma_shape = misc$infectious_period_gamma_shape, 
-#                                       infectious_period_gamma_rate = misc$infectious_period_gamma_rate,
-#                                       death_observation_gamma_shape = 1, 
-#                                       death_observation_gamma_rate = misc$death_observation_gamma_rate,
-#                                       vector_mortality_rate = misc$vector_mortality_rate,
-#                                       state = NULL)
-# 
-#         storage_list[[j]]$output <- temp$result
-#         
-#         ## If we've already done any simulating, reload the appropriate state
-#       } else {
-#         temp <- run_simulation_vector(seed = misc$seed[j], steps = (i / misc$dt), dt = misc$dt, N = misc$N, 
-#                                       initial_infections = misc$initial_infections, death_obs_prop = misc$death_obs_prop, 
-#                                       beta = beta_sim, importation_rate = misc$importation_rate,
-#                                       initial_run = FALSE, overall_run_length = NA,
-#                                       latent_period_gamma_shape = misc$latent_period_gamma_shape, 
-#                                       EIP_gamma_shape = misc$EIP_gamma_shape,
-#                                       EIP_gamma_rate = misc$EIP_gamma_rate, 
-#                                       latent_period_gamma_rate = misc$latent_period_gamma_rate,
-#                                       infectious_period_gamma_shape = misc$infectious_period_gamma_shape, 
-#                                       infectious_period_gamma_rate = misc$infectious_period_gamma_rate,
-#                                       death_observation_gamma_shape = 1, 
-#                                       death_observation_gamma_rate = misc$death_observation_gamma_rate,
-#                                       vector_mortality_rate = misc$vector_mortality_rate,
-#                                       state = storage_list[[j]]$state)
-#         
-#         start_row <- (i - 1) * (1 / misc$dt) + 1
-#         end_row   <- i * (1 / misc$dt)
-#         storage_list[[j]]$output[start_row:end_row, ] <- temp$result[(1 + nrow(temp$result) - (1 / misc$dt)):nrow(temp$result), ]
-#         
-#       }
-#       storage_list[[j]]$state <- temp$state
-#       
-#       # Calculating the number of deaths that occur in that timestep
-#       #### NOTE THAT D_OBS_NEW ISN'T CURRENTLY TIMED CORRECTLY AND NEEDS CORRECTING
-#       temp_num_deaths_timestep <- sum(temp$result$D_obs_new[(1 + nrow(temp$result) - 1/misc$dt):nrow(temp$result)])
-#       num_deaths_timestep_particle[j] <- temp_num_deaths_timestep
-#       deaths_df[j, i] <- temp_num_deaths_timestep
-#     }
-#     
-#     ## Generating weights for each of the particles
-#     num_deaths_timestep_particle2 <- deaths_df[, i]
-#     to_replace <- sum(num_deaths_timestep_particle2 == 0)
-#     num_deaths_timestep_particle2[num_deaths_timestep_particle2 == 0] <- rexp(to_replace, rate = misc$exponential_noise_rate) 
-#     eval_loglik <- weight_particles(num_deaths_timestep_particle2, data$daily_incidence[i])
-#     
-#     ## Resampling particles using the weights
-#     resampled_indices <- sample(1:misc$particles, prob = eval_loglik$normalised_weights, replace = TRUE)
-#     storage_list <- storage_list[resampled_indices]
-#     deaths_df2[, i] <- num_deaths_timestep_particle[resampled_indices]
-#     loglikelihood[i] <- log(mean(eval_loglik$raw_weights))
-#   }
-#   
-#   ## One last round of resampling
-#   final_sampling_index <- sample(x = 1:misc$particles, size = 1, prob = eval_loglik$normalised_weights)
-#   deaths_trajectory <- deaths_df2[final_sampling_index, ]
-#   importations <- sum(storage_list[[final_sampling_index]]$output$num_to_import, na.rm = TRUE)
-#   
-#   ## Calculating the likelihood
-#   epi_likelihood <- ifelse("epidemiological" %in% misc$likelihood, sum(loglikelihood), 0) # likelihood for epidemiological data 
-#   import_likelihood <- ifelse("importations" %in% misc$likelihood, dpois(x = importations, lambda = misc$empirical_importations, log = TRUE), 0) # likelihood for number of empirical importations 
-#   start_date_relative_first_death <- as.numeric(misc$start_date - as.Date("2017-10-09"))
-#   start_date_likelihood <- ifelse("start_date" %in% misc$likelihood, dweibull(x = start_date_relative_first_death, shape = 5.562197, scale = 29.13864, log = TRUE), 0)
-#   ## note this comes from fitting a Weibull dist to the 2.5, 50 and 97.5 quantile for MRCA for Clade A from Nunos' 
-#   ## teams message with bootstrap support > 0.7, minus 1 full generation time (approx 19 days). 
-#   ## all dates are relative to date of first NHP death i.e. 2017-10-09 (9th Oct 2017)
-#   ## 2.5% = 2017-11-11, - 19 days = "2017-10-23" i.e. 14 days since 2017-10-09
-#   ## 50% = 2017-11-26, - 19 days = "2017-11-07"  i.e  29 days since 2017-10-09
-#   ## 97.5% = 2017-12-03, - 19 days = "2017-11-14" i.e. 36 days since 2017-10-09
-#   R0_prior <- misc$prior_function(params["R0"])
-#   total_likelihood <- epi_likelihood + import_likelihood + start_date_likelihood + R0_prior
-#   
-#   ## Returning output
-#   return(list(deaths_trajectory = deaths_trajectory, 
-#               loglikelihood = total_likelihood,
-#               likelihood_components = list(epi = epi_likelihood,
-#                                            importations = import_likelihood,
-#                                            start = start_date_likelihood,
-#                                            R0_prior = R0_prior),
-#               importations = importations))
-#   
-# }
 
 # logprior function
 r_logprior <- function(params, misc) {

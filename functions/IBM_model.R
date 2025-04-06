@@ -8,8 +8,10 @@ run_simulation2 <- function(seed, steps, dt, N, initial_infections, death_obs_pr
                             latent_period_gamma_rate,
                             infectious_period_gamma_shape, 
                             infectious_period_gamma_rate,
-                            death_observation_gamma_shape, 
-                            death_observation_gamma_rate,
+                            death_observation_mixture_prob,
+                            death_observation_mixture_exponential_rate,
+                            death_observation_mixture_gamma_shape, 
+                            death_observation_mixture_gamma_rate,
                             state) {
   
   ## Setting the seed
@@ -38,6 +40,12 @@ run_simulation2 <- function(seed, steps, dt, N, initial_infections, death_obs_pr
       foi <- beta * I_inf                   # calculate FOI experienced by susceptible monkeys
       p_inf <- 1 - exp(-foi * dt)           # converting the FOI (instantaneous rate) to a probability of being infected in the timestep
       local_infections <- S_all$copy()      # copy the susceptible set
+      if (p_inf < 0) {
+        print("p_inf is less than 0")
+      }
+      if (p_inf > 1) {
+        print("p_inf is greater than 1")
+      }
       local_infections$sample(rate = p_inf) # pick who gets infected locally
       
       ## Infections representing importations
@@ -171,10 +179,25 @@ run_simulation2 <- function(seed, steps, dt, N, initial_infections, death_obs_pr
     unscheduled_to_Dobs <- unscheduled_to_Dobs$sample(death_obs_prop)
     unscheduled_to_D_unobs <- D$and(unscheduled_to_Dobs$not(inplace = FALSE))
     
-    observation_times <- rgamma(n = unscheduled_to_Dobs$size(), 
-                                shape = death_observation_gamma_shape, 
-                                rate = death_observation_gamma_rate) / dt
-    observation_event$schedule(target = unscheduled_to_Dobs, delay = observation_times)
+    if (unscheduled_to_Dobs$size() > 0) {
+      death_observation_mixture_dist_indicator <- rbinom(n = unscheduled_to_Dobs$size(), 
+                                                         size = 1, 
+                                                         prob = death_observation_mixture_prob)
+      observation_times <- vector(mode = "numeric", length = length(death_observation_mixture_dist_indicator))
+      for (i in 1:length(death_observation_mixture_dist_indicator)) {
+        if (death_observation_mixture_dist_indicator[i] == 1) {
+          observation_times[i] <- rexp(n = 1, 
+                                       rate = death_observation_mixture_exponential_rate) / dt
+        } else if (death_observation_mixture_dist_indicator[i] == 0) {
+          observation_times[i] <- rgamma(n = 1, 
+                                         shape = death_observation_mixture_gamma_shape, 
+                                         rate = death_observation_mixture_gamma_rate) / dt
+        } else {
+          stop("something has gone wrong with death_observation_mixture_dist_indicator")
+        }
+      }
+      observation_event$schedule(target = unscheduled_to_Dobs, delay = observation_times)
+    }
     unobserved_event$schedule(target = unscheduled_to_D_unobs, delay = 1)
     
     ## Define render

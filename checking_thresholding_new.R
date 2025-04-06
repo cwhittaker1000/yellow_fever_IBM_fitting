@@ -37,7 +37,7 @@ for (i in 1:length(R0_scan)) {
                            steps = 8000, 
                            dt = 0.1, 
                            N = N_scan[j], 
-                           initial_infections = 5, 
+                           initial_infections = 1, 
                            death_obs_prop = 1, 
                            beta = beta[i], 
                            initial_run = FALSE, 
@@ -71,11 +71,10 @@ for (i in 1:length(R0_scan)) {
 }
 
 ## Overall loglikelihood
-final_size <- apply(final_size_matrix, c(1, 2), mean)
+final_size <- apply(final_size_matrix, c(1, 2), min)
 dimnames(final_size) <- list(R0 = R0_scan, N = N_scan)
 df_long <- as.data.frame.table(final_size, responseName = "finalsize")
 head(df_long)
 ggplot(df_long, aes(x = R0, y = finalsize, col = N)) +
   geom_point() +
   theme_bw()
-
