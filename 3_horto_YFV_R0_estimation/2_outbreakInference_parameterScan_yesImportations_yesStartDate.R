@@ -7,8 +7,6 @@ source("functions/IBM_model.R")
 source("functions/particle_filter.R")
 
 # Loading in fitted parameters
-death_observation_fit <- readRDS("outputs/deathObservation_distExp_stanFit.rds")
-death_observation_gamma_rate <- mean(rstan::extract(death_observation_fit, "a")[[1]]) # note exp used here and gamma below, but if shape set to 1, then is an exponential
 latent_period_fit <- readRDS("outputs/exposure_infectiousDist_stanFit.rds")
 latent_period_gamma_shape <- mean(rstan::extract(latent_period_fit, "a")[[1]]) # note exp used here and gamma below, but if shape set to 1, then is an exponential
 latent_period_gamma_rate <- mean(rstan::extract(latent_period_fit, "b")[[1]]) # note exp used here and gamma below, but if shape set to 1, then is an exponential
@@ -18,12 +16,20 @@ infectious_period_gamma_rate <- mean(rstan::extract(infectious_period_fit, "b")[
 EIP_gamma_fit <- readRDS("outputs/EIP_adultMice_gammaParams_25degrees.rds")
 EIP_gamma_shape <- EIP_gamma_fit$gamma_a
 EIP_gamma_rate <- EIP_gamma_fit$gamma_b
+death_observation_fit <- readRDS("outputs/deathObservation_distMix_stanFit.rds")
 
-generation_time <- round((latent_period_gamma_shape / latent_period_gamma_rate) + 
+death_observation_gamma_shape <- mean(rstan::extract(death_observation_fit, "a_gamma")[[1]]) 
+death_observation_gamma_rate <- mean(rstan::extract(death_observation_fit, "b_gamma")[[1]])
+death_observation_exp_rate <- mean(rstan::extract(death_observation_fit, "a_exp")[[1]])
+death_observation_prob <- mean(rstan::extract(death_observation_fit, "prob")[[1]])
+
+generation_time <- round(
+  (latent_period_gamma_shape / latent_period_gamma_rate) + 
   (infectious_period_gamma_shape / infectious_period_gamma_rate) +
   (EIP_gamma_shape / EIP_gamma_rate) +
-  (1 / death_observation_gamma_rate))
-
+  ((1 - death_observation_prob) * (death_observation_gamma_shape / death_observation_gamma_rate) +
+     death_observation_prob * (1 / death_observation_exp_rate)))
+    
 # Loading in and processing Horto/PEAL data for model fitting
 horto_df <- readRDS("data/processed_HortoData.rds") %>%
   filter(!is.na(zone_peal)) %>%
@@ -132,9 +138,12 @@ if (fresh_run) {
                        latent_period_gamma_rate = latent_period_gamma_rate,
                        infectious_period_gamma_shape = infectious_period_gamma_shape, 
                        infectious_period_gamma_rate = infectious_period_gamma_rate,
-                       death_observation_gamma_shape = 1, 
-                       death_observation_gamma_rate = death_observation_gamma_rate,
-                       prior_function = R0_prior_function)
+                       death_observation_mixture_gamma_shape = death_observation_gamma_shape, 
+                       death_observation_mixture_gamma_rate = death_observation_gamma_rate,
+                       death_observation_mixture_exponential_rate = death_observation_exp_rate,
+                       death_observation_mixture_prob = death_observation_prob,
+                       prior_function = R0_prior_function,
+                       likelihood_distribution = "poisson")
           
           # Setting up the cluster to run everything in parallel
           cl <- makeCluster(cores)
@@ -340,17 +349,15 @@ ggplot(df_long_imports, aes(x = start_date, y = factor(R0), fill = imports)) +
   scale_fill_distiller(palette = "RdBu", oob = scales::squish) + #  limits = scales) + 
   labs(x = "Start Date",
        y = expression(R[0]),
-       fill = "Avg.\nLoglike") +
+       fill = "Imports") +
   scale_x_date(expand = c(0, 0)) +  # Remove whitespace on the x-axis
   scale_y_discrete(expand = c(0, 0)) +  # Remove whitespace on the y-axis
   theme_bw() +
-  facet_grid(transmission_type ~ exponential_noise) +
+  # facet_grid(transmission_type ~ exponential_noise) +
   theme(# axis.text.x = element_text(angle = 45, hjust = 1),
     plot.title = element_text(hjust = 0.5, face = "bold"),
     legend.position = "right")
 ## lower R0 and later start date needs more imports
-
-# scales <- c(-65, -50)
 
 ## add in likelihood term for importations
 
@@ -396,18 +403,17 @@ sampled_data_R0 <- sampled_data %>%
 sampled_data_R0$R0 <- as.factor(sampled_data_R0$R0)
 R0_marginal_plot <- ggplot(sampled_data_R0, aes(x = R0, fill = AvgValue)) +
   geom_histogram(color = "black", stat = "count") +
-  scale_fill_distiller(palette = "RdBu", limits = scales, oob = scales::squish) + 
-  labs(x = "Inferred Marginal R0 Distribution",
+  scale_fill_distiller(palette = "RdBu") + # limits = scales, oob = scales::squish) + 
+  labs(x = "Marginal R0 Distribution",
        y = "Frequency",
        fill = "Avg.\nLoglike") +
   theme_bw() +
   theme(plot.title = element_text(face = "bold"),
-        # axis.text.x = element_text(angle = 45, hjust = 1),
-        axis.title.x = element_blank()) +
-  annotate("text", x = 0.75, y = 2000,
-           label = "R0: Basic Reproduction Number", hjust = 0, fontface = "bold", size = 5)
+        legend.position = "none") 
 
-cowplot::plot_grid(R0_marginal_plot)
+likelihood_R0_marginal <- cowplot::plot_grid(overall_likelihood_plot + theme(legend.position = "none"), 
+                                             R0_marginal_plot + theme(legend.position = "none"),
+                                             labels = c("a", "b"))
 
 ## Marginal for start date
 avg_start_date_values <- sampled_data %>%
@@ -478,7 +484,7 @@ outbreak_inference_plot <- ggplot(output_df, aes(x = time)) +
   labs(x = "", y = "Daily Reported\nNHP Deaths") +
   scale_y_continuous(breaks = c(0, 2, 4, 6, 8, 10)) +
   scale_x_date(date_breaks = "1 week",
-               limits = c(as.Date("2017-11-15"), NA)) +
+               limits = c(as.Date("2017-11-20"), NA)) +
   theme_bw() +
   theme(text = element_text(size = 12),
         plot.title = element_text(hjust = 0.5),
@@ -488,33 +494,42 @@ outbreak_inference_plot <- ggplot(output_df, aes(x = time)) +
 cowplot::plot_grid(outbreak_inference_plot, inference_overall, nrow = 2, rel_heights = c(1, 1.45), 
                    labels = c("A", "B"), align = "v", axis = "r")
 
-
 lower_Reff <- apply(sampled_Reff_matrix, 2, quantile, 0.025)
 upper_Reff <- apply(sampled_Reff_matrix, 2, quantile, 0.975)
 min_Reff <- apply(sampled_Reff_matrix, 2, min)
 max_Reff <- apply(sampled_Reff_matrix, 2, max)
 mean_Reff <- apply(sampled_Reff_matrix, 2, mean)
-output_df <- data.frame(time = horto_df_fitting$date_collection, 
-                        observed = horto_df_fitting$count, 
-                        mean = mean_Reff, 
-                        lower = lower_Reff, 
-                        upper = upper_Reff,
-                        min = min_Reff,
-                        max = max_Reff)
+output_df2 <- data.frame(time = horto_df_fitting$date_collection, 
+                         observed = horto_df_fitting$count, 
+                         mean = mean_Reff, 
+                         lower = lower_Reff, 
+                         upper = upper_Reff,
+                         min = min_Reff,
+                         max = max_Reff)
 # "#948D9B""#63A375""#AFD5AA""#729B79""#DAFF7D""#419D78"
-ggplot(output_df, aes(x = time)) +
-  geom_ribbon(aes(ymin = lower, ymax = upper), fill = "#AFD5AA", alpha = 0.2) +
-  geom_line(aes(y = mean), color = "#AFD5AA", size = 0.75) +
-  geom_point(aes(y = observed), color = "black", size = 2) +
+Reff_deaths_plot <- ggplot() +
+  geom_ribbon(data = output_df2, aes(x = time, ymin = lower, ymax = upper), fill = "#BF6900", alpha = 0.2) +
+  geom_line(data = output_df2, aes(x = time, y = mean), color = "#BF6900", size = 0.75) +
+  geom_point(data = output_df2, aes(x = time, y = observed), color = "black", size = 2) +
+  geom_ribbon(data = output_df, aes(x = time, ymin = lower, ymax = upper), fill = "#145C9E", alpha = 0.2) +
+  geom_line(data = output_df, aes(x = time, y = mean), color = "#145C9E", size = 0.75) +
   labs(x = "", y = "Daily Reported\nNHP Deaths") +
-  scale_y_continuous(breaks = c(0, 2, 4, 6, 8, 10)) +
+  scale_y_continuous(breaks = c(0, 2, 4, 6, 8, 10, 12, 14)) +
   scale_x_date(date_breaks = "1 week",
-               limits = c(as.Date("2017-11-15"), NA)) +
+               limits = c(as.Date("2017-12-01"), NA)) +
   theme_bw() +
   theme(text = element_text(size = 12),
         plot.title = element_text(hjust = 0.5),
         axis.title.x = element_blank(),
         axis.text.x = element_text(angle = 45, hjust = 1))
+
+overall_R0_modelling_plot <- cowplot::plot_grid(likelihood_R0_marginal, Reff_deaths_plot, 
+                                                nrow = 2, labels = c("", "c"))
+
+ggsave(plot = overall_R0_modelling_plot,
+       filename = "3_horto_YFV_R0_estimation/figures/overall_R0_modelling_plot.pdf",
+       height = 7,
+       width = 8)
 
 ##########################################################
 # lower <- apply(sampled_output_matrix, 2, min)
