@@ -56,11 +56,13 @@ r_loglike <- function(params, data, misc) {
   ## Creating storage for model outputs
   deaths_df <- array(data = NA, dim = c(misc$particles, length(data$time)))
   deaths_df2 <- array(data = NA, dim = c(misc$particles, length(data$time)))
+  inc_df <- array(data = NA, dim = c(misc$particles, length(data$time)))
+  inc_df2 <- array(data = NA, dim = c(misc$particles, length(data$time)))
   loglikelihood <- vector(mode = "numeric", length = length(data$time))
   
   storage_list <- vector(mode = "list", length = misc$particles)
   num_rows_output <- length(data$time) * (1 / misc$dt)
-  num_cols_output <- 4
+  num_cols_output <- 5
   for (j in seq_len(misc$particles)) {
     storage_list[[j]] <- list(output = matrix(NA_real_, nrow = num_rows_output, ncol = num_cols_output), 
                               state = NULL)
@@ -114,7 +116,7 @@ r_loglike <- function(params, data, misc) {
         start_row <- (i - 1) * (1 / misc$dt) + 1
         end_row   <- i * (1 / misc$dt)
         
-        indices <- match(c("timestep", "num_to_import", "Dobs_count"), colnames(temp$result))
+        indices <- match(c("timestep", "num_to_import", "Dobs_count", "S_count"), colnames(temp$result))
         storage_list[[j]]$output[start_row:end_row, ] <- temp$result[(1 + nrow(temp$result) - (1 / misc$dt)):nrow(temp$result), indices]
         
       }
@@ -122,6 +124,7 @@ r_loglike <- function(params, data, misc) {
       
       # Calculating the number of deaths that occur in that timestep
       if (i == 1) {
+        temp_num_inc_timestep <- max(temp$result$S_count) - min(temp$result$S_count)
         temp_num_deaths_timestep <- max(temp$result$Dobs_count[(1 + nrow(temp$result) - 1/misc$dt):nrow(temp$result)])
       } else {
         prev_max_D_obs <- storage_list[[j]]$output$Dobs_count[start_row - 1]
@@ -130,9 +133,13 @@ r_loglike <- function(params, data, misc) {
         if (temp_num_deaths_timestep < 0 | temp_num_deaths_timestep > 50) {
           stop("something's gone wrong and temp_num_deaths_timestep is negative or mad big")
         }
+        prev_max_S <- storage_list[[j]]$output$S_count[start_row - 1]
+        new_max_S <- temp$result$S_count[nrow(temp$result)]
+        temp_num_inc_timestep <- prev_max_S - new_max_S
       }
       num_deaths_timestep_particle[j] <- temp_num_deaths_timestep
       deaths_df[j, i] <- temp_num_deaths_timestep
+      inc_df[j, i] <- temp_num_inc_timestep
     }
     
     ## Generating weights for each of the particles
@@ -146,17 +153,20 @@ r_loglike <- function(params, data, misc) {
     } else {
       stop("likelihood distribution must be poisson or negative binomial")
     }
+    num_inc_timestep_particle2 <- inc_df[, i]
     
     ## Resampling particles using the weights
     resampled_indices <- sample(1:misc$particles, prob = eval_loglik$normalised_weights, replace = TRUE)
     storage_list <- storage_list[resampled_indices]
     deaths_df2[, i] <- num_deaths_timestep_particle[resampled_indices]
+    inc_df2[, i] <- num_inc_timestep_particle2[resampled_indices]
     loglikelihood[i] <- log(mean(eval_loglik$raw_weights))
   }
   
   ## One last round of resampling
   final_sampling_index <- sample(x = 1:misc$particles, size = 1, prob = eval_loglik$normalised_weights)
   deaths_trajectory <- deaths_df2[final_sampling_index, ]
+  inc_trajectory <- inc_df2[final_sampling_index, ]
   importations <- sum(storage_list[[final_sampling_index]]$output$num_to_import, na.rm = TRUE)
   
   ## Calculating the likelihood
@@ -172,6 +182,7 @@ r_loglike <- function(params, data, misc) {
   
   ## Returning output
   return(list(deaths_trajectory = deaths_trajectory, 
+              inc_trajectory = inc_trajectory,
               loglikelihood = total_likelihood,
               likelihood_components = list(epi = epi_likelihood,
                                            importations = import_likelihood,

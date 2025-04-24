@@ -84,7 +84,8 @@ startdatelikelihood_matrix <- array(data = NA, dim = c(iterations, length(R0_sca
 importations_matrix <- array(data = NA, dim = c(iterations, length(R0_scan), length(start_date_scan), length(transmission_type_scan), length(exponential_noise_scan), length(likelihood_distribution_scan)))
 final_size_matrix <- array(data = NA, dim = c(iterations, length(R0_scan), length(start_date_scan), length(transmission_type_scan), length(exponential_noise_scan), length(likelihood_distribution_scan)))
 output_matrix <- array(data = NA, dim = c(iterations, length(R0_scan), length(start_date_scan), length(transmission_type_scan), length(exponential_noise_scan), length(likelihood_distribution_scan), length(horto_df_fitting$count)))
-inferred_total_deaths_matrix <- array(data = NA, dim = c(iterations, length(R0_scan), length(start_date_scan), length(transmission_type_scan), length(exponential_noise_scan), length(likelihood_distribution_scan), length(horto_df_fitting$count)))
+output_matrix_inc <- array(data = NA, dim = c(iterations, length(R0_scan), length(start_date_scan), length(transmission_type_scan), length(exponential_noise_scan), length(likelihood_distribution_scan), length(horto_df_fitting$count)))
+# inferred_total_deaths_matrix <- array(data = NA, dim = c(iterations, length(R0_scan), length(start_date_scan), length(transmission_type_scan), length(exponential_noise_scan), length(likelihood_distribution_scan), length(horto_df_fitting$count)))
 
 overall_seed <- 10
 set.seed(overall_seed)
@@ -181,6 +182,7 @@ if (fresh_run) {
             padding_zeroes <- rep(0, as.numeric(start_date_scan[j] - start_date_scan[1]))
             for (n in 1:iterations) {
               output_matrix[n, i, j, k, l, m, ] <- c(padding_zeroes, result_parallel[[n]]$deaths_trajectory)
+              output_matrix_inc[n, i, j, k, l, m] <- c(padding_zeroes, result_parallel[[n]]$inc_trajectory)
               # inferred_total_deaths_matrix[n, i, j, k, l, m, ] <- c(padding_zeroes, result_parallel[[n]]$all_deaths_trajectory)
               final_size_matrix[n, i, j, k, l, m] <- sum(result_parallel[[n]]$deaths_trajectory)
               loglikelihood_matrix[n, i, j, k, l, m] <- result_parallel[[n]]$loglikelihood
