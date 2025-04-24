@@ -5,6 +5,8 @@ library(parallel); library(profvis); library(truncnorm)
 ## Sourcing functions
 source("functions/IBM_model.R")
 source("functions/particle_filter.R")
+source("fit_weibull_genomic_MRCA.R")
+source("prior_for_R0.R")
 
 # Loading in fitted parameters
 latent_period_fit <- readRDS("outputs/exposure_infectiousDist_stanFit.rds")
@@ -59,39 +61,42 @@ death_obs_prop <- N_obs / N
 dt <- 0.2
 initial_infections <- 1
 gamma <- 1 / (infectious_period_gamma_shape / infectious_period_gamma_rate)
-importations <- 18 # from the genomic data
+importations <- 4 / (33 / N_obs) # from the genomic data - 4 clusters containing NHP sequences, from 33/61 NHPs sequenced
 importation_last_date <- max(horto_df_fitting$date_collection) - generation_time # upper bound assumed to be 1 generation time before the final monkey death
 
 ## Parameters for initial particle filtering to identify parameter regime of highest likelihood
-R0_scan <- c(2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16)
+R0_scan <- c(2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14)
 start_date_scan <- start_date + seq(0, 36, 3)
 transmission_type_scan <- c("density_dependent")
 exponential_noise_scan <- 1/1e-1
-R0_prior_function <- function(R0_value) { return(log(dtruncnorm(R0_value, a = 1, b = 18, mean = 3.55946, sd = 3.310322))) }
+likelihood_distribution_scan <- "negative_binomial" # c("poisson", "negative_binomial")
+negative_binomial_size <- 1
+R0_prior_function <- function(R0_value) { return(log(dtruncnorm(R0_value, a = 1, b = 16, mean = fitted_mu, sd = fitted_sigma))) }
 
 iterations <- 10
-particles <- 500
+particles <- 200
 cores <- 10
 
-loglikelihood_matrix <- array(data = NA, dim = c(iterations, length(R0_scan), length(start_date_scan), length(transmission_type_scan), length(exponential_noise_scan)))
-epilikelihood_matrix <- array(data = NA, dim = c(iterations, length(R0_scan), length(start_date_scan), length(transmission_type_scan), length(exponential_noise_scan)))
-importlikelihood_matrix <- array(data = NA, dim = c(iterations, length(R0_scan), length(start_date_scan), length(transmission_type_scan), length(exponential_noise_scan)))
-startdatelikelihood_matrix <- array(data = NA, dim = c(iterations, length(R0_scan), length(start_date_scan), length(transmission_type_scan), length(exponential_noise_scan)))
-importations_matrix <- array(data = NA, dim = c(iterations, length(R0_scan), length(start_date_scan), length(transmission_type_scan), length(exponential_noise_scan)))
-final_size_matrix <- array(data = NA, dim = c(iterations, length(R0_scan), length(start_date_scan), length(transmission_type_scan), length(exponential_noise_scan)))
-output_matrix <- array(data = NA, dim = c(iterations, length(R0_scan), length(start_date_scan), length(transmission_type_scan), length(exponential_noise_scan), length(horto_df_fitting$count)))
-inferred_total_deaths_matrix <- array(data = NA, dim = c(iterations, length(R0_scan), length(start_date_scan), length(transmission_type_scan), length(exponential_noise_scan), length(horto_df_fitting$count)))
+loglikelihood_matrix <- array(data = NA, dim = c(iterations, length(R0_scan), length(start_date_scan), length(transmission_type_scan), length(exponential_noise_scan), length(likelihood_distribution_scan)))
+epilikelihood_matrix <- array(data = NA, dim = c(iterations, length(R0_scan), length(start_date_scan), length(transmission_type_scan), length(exponential_noise_scan), length(likelihood_distribution_scan)))
+importlikelihood_matrix <- array(data = NA, dim = c(iterations, length(R0_scan), length(start_date_scan), length(transmission_type_scan), length(exponential_noise_scan), length(likelihood_distribution_scan)))
+startdatelikelihood_matrix <- array(data = NA, dim = c(iterations, length(R0_scan), length(start_date_scan), length(transmission_type_scan), length(exponential_noise_scan), length(likelihood_distribution_scan)))
+importations_matrix <- array(data = NA, dim = c(iterations, length(R0_scan), length(start_date_scan), length(transmission_type_scan), length(exponential_noise_scan), length(likelihood_distribution_scan)))
+final_size_matrix <- array(data = NA, dim = c(iterations, length(R0_scan), length(start_date_scan), length(transmission_type_scan), length(exponential_noise_scan), length(likelihood_distribution_scan)))
+output_matrix <- array(data = NA, dim = c(iterations, length(R0_scan), length(start_date_scan), length(transmission_type_scan), length(exponential_noise_scan), length(likelihood_distribution_scan), length(horto_df_fitting$count)))
+inferred_total_deaths_matrix <- array(data = NA, dim = c(iterations, length(R0_scan), length(start_date_scan), length(transmission_type_scan), length(exponential_noise_scan), length(likelihood_distribution_scan), length(horto_df_fitting$count)))
 
 overall_seed <- 10
 set.seed(overall_seed)
-simulation_seeds <- array(data = rnbinom(n = iterations * length(R0_scan) * length(start_date_scan) * length(transmission_type_scan) * length(exponential_noise_scan), 
+simulation_seeds <- array(data = rnbinom(n = iterations * length(R0_scan) * length(start_date_scan) * length(transmission_type_scan) * length(exponential_noise_scan) * length(likelihood_distribution_scan), 
                                          mu = 10^6, size = 1), 
-                          dim = c(length(R0_scan), length(start_date_scan), length(transmission_type_scan), length(exponential_noise_scan), iterations))
-fresh_run <- FALSE
+                          dim = c(length(R0_scan), length(start_date_scan), length(transmission_type_scan), length(exponential_noise_scan), length(likelihood_distribution_scan), iterations))
+# length(R0_scan) * length(start_date_scan) * length(transmission_type_scan) * length(exponential_noise_scan) * length(likelihood_distribution_scan)
+fresh_run <- TRUE
 if (fresh_run) {
   
   ## Looping through R0
-  for (i in 1:length(R0_scan)) {
+  for (i in 5:length(R0_scan)) {
     
     ## Looping through the start dates
     for (j in 1:length(start_date_scan)) {
@@ -100,97 +105,97 @@ if (fresh_run) {
         
         for (l in 1:length(exponential_noise_scan)) {
           
-          # Selecting the start date and filtering the Horto data to start then
-          start_date <- start_date_scan[j]
-          data <- horto_df_fitting %>%
-            filter(date_collection >= start_date) %>%
-            rename(daily_incidence = count)
-          steps <- nrow(data) / dt
-          days <- nrow(data)
-          
-          # Calculating the importation rate - note that given the epidemic goes to extinction, we really
-          # need to calculate it up to 1 full generation time before the last death (i.e. the time when that last monkey was infected 
-          # in our model) - final date in importation_date_range is the actual time when all the susceptibles are depleted
-          importation_date_range <- data %>%
-            filter(date_collection <= importation_last_date)
-          importation_rate <- importations / nrow(importation_date_range) 
-          
-          # Defining the misc list that supports running the particle filter
-          misc <- list(seed = simulation_seeds[i, j, k, l, ], 
-                       steps = steps, 
-                       gamma = gamma,
-                       particles = particles,
-                       dt = dt, 
-                       N = N, 
-                       start_date = start_date,
-                       importation_rate = importation_rate,
-                       empirical_importations = importations,
-                       transmission_type = transmission_type_scan[k], 
-                       exponential_noise_rate = exponential_noise_scan[l],
-                       likelihood = c("epidemiological", "importations", "start_date"),
-                       initial_infections = initial_infections, 
-                       death_obs_prop = death_obs_prop, 
-                       initial_run = TRUE, 
-                       overall_run_length = steps,
-                       latent_period_gamma_shape = latent_period_gamma_shape, 
-                       EIP_gamma_shape = EIP_gamma_shape,
-                       EIP_gamma_rate = EIP_gamma_rate, 
-                       latent_period_gamma_rate = latent_period_gamma_rate,
-                       infectious_period_gamma_shape = infectious_period_gamma_shape, 
-                       infectious_period_gamma_rate = infectious_period_gamma_rate,
-                       death_observation_mixture_gamma_shape = death_observation_gamma_shape, 
-                       death_observation_mixture_gamma_rate = death_observation_gamma_rate,
-                       death_observation_mixture_exponential_rate = death_observation_exp_rate,
-                       death_observation_mixture_prob = death_observation_prob,
-                       prior_function = R0_prior_function,
-                       likelihood_distribution = "poisson")
-          
-          # Setting up the cluster to run everything in parallel
-          cl <- makeCluster(cores)
-          clusterExport(cl, varlist = c("r_loglike", "weight_particles", "data", "misc", "run_simulation2"))
-          clusterEvalQ(cl, {
-            library(individual)
-            library(truncnorm)
-          })
-          
-          # Running the loglikelihood function in parallel
-          R0_temp <- c("R0" = R0_scan[i])
-          clusterExport(cl, varlist = c("R0_temp"))
-          result_parallel <- parLapply(cl, 1:iterations, function(i) {
-            misc_new <- misc
-            misc_new$seed <- misc$seed[i]
-            temp <- r_loglike(R0_temp, data, misc_new)
-            return(temp)
-          })
-          parallel::stopCluster(cl)
-          
-          # Storing the output
-          padding_zeroes <- rep(0, as.numeric(start_date_scan[j] - start_date_scan[1]))
-          for (m in 1:iterations) {
-            output_matrix[m, i, j, k, l, ] <- c(padding_zeroes, result_parallel[[m]]$deaths_trajectory)
-            inferred_total_deaths_matrix[m, i, j, k, l, ] <- c(padding_zeroes, result_parallel[[m]]$all_deaths_trajectory)
-            final_size_matrix[m, i, j, k, l] <- sum(result_parallel[[m]]$deaths_trajectory)
-            loglikelihood_matrix[m, i, j, k, l] <- result_parallel[[m]]$loglikelihood
-            epilikelihood_matrix[m, i, j, k, l] <- result_parallel[[m]]$likelihood_components$epi
-            importlikelihood_matrix[m, i, j, k, l] <- result_parallel[[m]]$likelihood_components$importations
-            startdatelikelihood_matrix[m, i, j, k, l] <- result_parallel[[m]]$likelihood_components$start
-            importations_matrix[m, i, j, k, l] <- result_parallel[[m]]$importations
+          for (m in 1:length(likelihood_distribution_scan)) {
+            
+            new_sys_time <- Sys.time()
+            
+            # Selecting the start date and filtering the Horto data to start then
+            start_date <- start_date_scan[j]
+            data <- horto_df_fitting %>%
+              filter(date_collection >= start_date) %>%
+              rename(daily_incidence = count)
+            steps <- nrow(data) / dt
+            days <- nrow(data)
+            
+            # Calculating the importation rate - note that given the epidemic goes to extinction, we really
+            # need to calculate it up to 1 full generation time before the last death (i.e. the time when that last monkey was infected 
+            # in our model) - final date in importation_date_range is the actual time when all the susceptibles are depleted
+            importation_date_range <- data %>%
+              filter(date_collection <= importation_last_date)
+            importation_rate <- importations / nrow(importation_date_range) 
+            
+            # Defining the misc list that supports running the particle filter
+            misc <- list(seed = simulation_seeds[i, j, k, l, m, ], 
+                         steps = steps, 
+                         gamma = gamma,
+                         particles = particles,
+                         dt = dt, 
+                         N = N, 
+                         start_date = start_date,
+                         importation_rate = importation_rate,
+                         empirical_importations = importations,
+                         transmission_type = transmission_type_scan[k], 
+                         exponential_noise_rate = exponential_noise_scan[l],
+                         likelihood = c("epidemiological", "importations", "start_date"),
+                         initial_infections = initial_infections, 
+                         death_obs_prop = death_obs_prop, 
+                         initial_run = TRUE, 
+                         overall_run_length = steps,
+                         latent_period_gamma_shape = latent_period_gamma_shape, 
+                         EIP_gamma_shape = EIP_gamma_shape,
+                         EIP_gamma_rate = EIP_gamma_rate, 
+                         latent_period_gamma_rate = latent_period_gamma_rate,
+                         infectious_period_gamma_shape = infectious_period_gamma_shape, 
+                         infectious_period_gamma_rate = infectious_period_gamma_rate,
+                         death_observation_mixture_gamma_shape = death_observation_gamma_shape, 
+                         death_observation_mixture_gamma_rate = death_observation_gamma_rate,
+                         death_observation_mixture_exponential_rate = death_observation_exp_rate,
+                         death_observation_mixture_prob = death_observation_prob,
+                         prior_function = R0_prior_function,
+                         weibull_shape = weibull_shape,
+                         weibull_scale = weibull_scale,
+                         start_date_weibull_fitting = start_date_weibull_fitting,
+                         negative_binomial_size = negative_binomial_size,
+                         likelihood_distribution = likelihood_distribution_scan[m])
+            
+            # Setting up the cluster to run everything in parallel
+            cl <- makeCluster(cores)
+            clusterExport(cl, varlist = c("r_loglike", "weight_particles_poisson", "weight_particles_negative_binomial", "data", "misc", "run_simulation2", "fitted_mu", "fitted_sigma"))
+            clusterEvalQ(cl, {
+              library(individual)
+              library(truncnorm)
+            })
+            
+            # Running the loglikelihood function in parallel
+            R0_temp <- c("R0" = R0_scan[i])
+            clusterExport(cl, varlist = c("R0_temp"))
+            result_parallel <- parLapply(cl, 1:iterations, function(i) {
+              misc_new <- misc
+              misc_new$seed <- misc$seed[i]
+              temp <- r_loglike(R0_temp, data, misc_new)
+              return(temp)
+            })
+            parallel::stopCluster(cl)
+            
+            # Storing the output
+            padding_zeroes <- rep(0, as.numeric(start_date_scan[j] - start_date_scan[1]))
+            for (n in 1:iterations) {
+              output_matrix[n, i, j, k, l, m, ] <- c(padding_zeroes, result_parallel[[n]]$deaths_trajectory)
+              # inferred_total_deaths_matrix[n, i, j, k, l, m, ] <- c(padding_zeroes, result_parallel[[n]]$all_deaths_trajectory)
+              final_size_matrix[n, i, j, k, l, m] <- sum(result_parallel[[n]]$deaths_trajectory)
+              loglikelihood_matrix[n, i, j, k, l, m] <- result_parallel[[n]]$loglikelihood
+              epilikelihood_matrix[n, i, j, k, l, m] <- result_parallel[[n]]$likelihood_components$epi
+              importlikelihood_matrix[n, i, j, k, l, m] <- result_parallel[[n]]$likelihood_components$importations
+              startdatelikelihood_matrix[n, i, j, k, l, m] <- result_parallel[[n]]$likelihood_components$start
+              importations_matrix[n, i, j, k, l, m] <- result_parallel[[n]]$importations
+            }
+            
+            print(c(paste0("i = ", i, ", j = ", j, ", k = ", k, ", l = " , l, ", m = ", m), paste0("Took ", round((Sys.time() - new_sys_time), 2), " minutes")))
+            
           }
-          
-          print(c("l = ", l))
-          
         }
-        
-        print(c("k = ", k))
-        
       }
-      
-      print(c("j = ", j))
-      
     }
-    
-    print(i)
-    
   }
   
   saveRDS(list(output = output_matrix,
@@ -213,39 +218,41 @@ if (fresh_run) {
 }
 
 ## Overall loglikelihood
-loglik_avg <- apply(loglikelihood_matrix, c(2, 3, 4 ,5), mean)
+loglik_avg <- apply(loglikelihood_matrix, c(2, 3, 4, 5, 6), mean)
 dimnames(loglik_avg) <- list(
   R0 = R0_scan,                   # use your R0_scan vector here
   start_date = paste0("s", as.Date(start_date_scan)),
   transmission_type = transmission_type_scan,
-  exponential_noise = exponential_noise_scan
+  exponential_noise = exponential_noise_scan,
+  likelihood_dist = likelihood_distribution_scan
 )
 df_long <- as.data.frame.table(loglik_avg, responseName = "loglikelihood") %>%
   mutate(start_date = as.Date(gsub("s", "", start_date))) %>%
   filter(exponential_noise == "10")
 head(df_long)
-scales <- c(-100, -70)
-overall_likelihood_plot <- ggplot(df_long, aes(x = start_date, y = factor(R0), fill = loglikelihood)) +
+scales <- c(-90, -70)
+overall_likelihood_plot <- ggplot(subset(df_long, likelihood_dist == "negative_binomial"), 
+                                  aes(x = start_date, y = factor(R0), fill = loglikelihood)) +
   geom_tile(color = "white") +
   scale_fill_distiller(palette = "RdBu", oob = scales::squish, limits = scales) + 
   labs(x = "Start Date",
        y = expression(R[0]),
        fill = "Avg.\nLoglike") +
+  # facet_grid(. ~ likelihood_dist) +
   scale_x_date(expand = c(0, 0)) +  # Remove whitespace on the x-axis
   scale_y_discrete(expand = c(0, 0)) +  # Remove whitespace on the y-axis
   theme_bw() +
-  # facet_grid(transmission_type ~ exponential_noise) +
-  theme(# axis.text.x = element_text(angle = 45, hjust = 1),
-    plot.title = element_text(hjust = 0.5, face = "bold"),
-    legend.position = "right")
+  theme(plot.title = element_text(hjust = 0.5, face = "bold"),
+        legend.position = "right")
 
 ## Epilikelihood plot
-epi_loglik_avg <- apply(epilikelihood_matrix, c(2, 3, 4 ,5), mean)
+epi_loglik_avg <- apply(epilikelihood_matrix, c(2, 3, 4, 5, 6), mean)
 dimnames(epi_loglik_avg) <- list(
   R0 = R0_scan,                   # use your R0_scan vector here
   start_date = paste0("s", as.Date(start_date_scan)),
   transmission_type = transmission_type_scan,
-  exponential_noise = exponential_noise_scan
+  exponential_noise = exponential_noise_scan,
+  likelihood_dist = likelihood_distribution_scan
 )
 df_long <- as.data.frame.table(epi_loglik_avg, responseName = "loglikelihood") %>%
   mutate(start_date = as.Date(gsub("s", "", start_date))) %>%
@@ -258,6 +265,7 @@ epilikelihood_plot <- ggplot(df_long, aes(x = start_date, y = factor(R0), fill =
   labs(x = "Start Date",
        y = expression(R[0]),
        fill = "Avg.\nLoglike") +
+  facet_grid(. ~ likelihood_dist) +
   scale_x_date(expand = c(0, 0)) +  # Remove whitespace on the x-axis
   scale_y_discrete(expand = c(0, 0)) +  # Remove whitespace on the y-axis
   theme_bw() +
@@ -267,12 +275,13 @@ epilikelihood_plot <- ggplot(df_long, aes(x = start_date, y = factor(R0), fill =
     legend.position = "right")
 
 ## Importations likelihood
-importation_lik_avg <- apply(importlikelihood_matrix, c(2, 3, 4 ,5), mean)
+importation_lik_avg <- apply(importlikelihood_matrix, c(2, 3, 4, 5, 6), mean)
 dimnames(importation_lik_avg) <- list(
   R0 = R0_scan,                   # use your R0_scan vector here
   start_date = paste0("s", as.Date(start_date_scan)),
   transmission_type = transmission_type_scan,
-  exponential_noise = exponential_noise_scan
+  exponential_noise = exponential_noise_scan,
+  likelihood_dist = likelihood_distribution_scan
 )
 df_long_import <- as.data.frame.table(importation_lik_avg, responseName = "loglikelihood") %>%
   mutate(start_date = as.Date(gsub("s", "", start_date))) %>%
@@ -285,6 +294,7 @@ importations_likelihood_plot <- ggplot(df_long_import, aes(x = start_date, y = f
   labs(x = "Start Date",
        y = expression(R[0]),
        fill = "Avg.\nLoglike") +
+  facet_grid(. ~ likelihood_dist) +
   scale_x_date(expand = c(0, 0)) +  # Remove whitespace on the x-axis
   scale_y_discrete(expand = c(0, 0)) +  # Remove whitespace on the y-axis
   theme_bw() +
@@ -294,12 +304,13 @@ importations_likelihood_plot <- ggplot(df_long_import, aes(x = start_date, y = f
     legend.position = "right")
 
 ## startdatelikelihood_matrix likelihood
-startdate_lik_avg <- apply(startdatelikelihood_matrix, c(2, 3, 4 ,5), mean)
+startdate_lik_avg <- apply(startdatelikelihood_matrix, c(2, 3, 4, 5, 6), mean)
 dimnames(startdate_lik_avg) <- list(
   R0 = R0_scan,                   # use your R0_scan vector here
   start_date = paste0("s", as.Date(start_date_scan)),
   transmission_type = transmission_type_scan,
-  exponential_noise = exponential_noise_scan
+  exponential_noise = exponential_noise_scan,
+  likelihood_dist = likelihood_distribution_scan
 )
 df_long_start <- as.data.frame.table(startdate_lik_avg, responseName = "loglikelihood") %>%
   mutate(start_date = as.Date(gsub("s", "", start_date)))
@@ -311,6 +322,7 @@ start_date_likelihood_plot <- ggplot(df_long_start, aes(x = start_date, y = fact
   labs(x = "Start Date",
        y = expression(R[0]),
        fill = "Avg.\nLoglike") +
+  facet_grid(. ~ likelihood_dist) +
   scale_x_date(expand = c(0, 0)) +  # Remove whitespace on the x-axis
   scale_y_discrete(expand = c(0, 0)) +  # Remove whitespace on the y-axis
   theme_bw() +
@@ -328,7 +340,7 @@ cowplot::plot_grid(epilikelihood_plot + theme(legend.position = "none"),
 colnames(loglik_avg) <- paste0("start=", start_date_scan)
 rownames(loglik_avg) <- paste0("R0=", R0_scan)
 
-importations_avg <- apply(importations, c(2, 3), mean)
+importations_avg <- apply(importations_matrix, c(2, 3, 4, 5, 6), mean)
 colnames(importations_avg) <- paste0("start=", start_date_scan)
 rownames(importations_avg) <- paste0("R0=", R0_scan)
 
@@ -363,21 +375,24 @@ ggplot(df_long_imports, aes(x = start_date, y = factor(R0), fill = imports)) +
 
 ## Plotting heatmap of inferred R0 and start-date combinations
 df_long <- data.frame(R0 = R0_scan, loglik_avg) %>%
-  pivot_longer(cols = -R0, 
-               names_to = "StartDate",
-               values_to = "Value") %>% 
-  mutate(StartDate = sub("^start\\.", "", StartDate), 
-         StartDate = gsub("\\.", "-", StartDate), 
-         StartDate = as.Date(StartDate, format = "%Y-%m-%d")) %>%
-  mutate(LogLikelihood_adj = Value - max(Value),
-         Likelihood = exp(LogLikelihood_adj),
-         Probability = Likelihood / sum(Likelihood))
+  pivot_longer(cols = -R0, names_to = "StartDateRaw", values_to = "Value") %>%
+  mutate(
+    StartDate = as.Date(substr(StartDateRaw, 7, 16), "%Y.%m.%d"), #2, 11 when two distibutions being assessed
+    Distribution = case_when(str_ends(StartDateRaw, "poisson") ~ "poisson", 
+                             str_ends(StartDateRaw, "negative_binomial") ~ "negative_binomial", 
+                             TRUE ~ NA_character_)) %>%
+  mutate(LogLikelihood_adj = Value - max(Value), 
+         Likelihood = exp(LogLikelihood_adj), 
+         Probability = Likelihood / sum(Likelihood)) %>%
+  select(R0, StartDate, Distribution, Value, LogLikelihood_adj, Likelihood, Probability)
+
 inferred_parameters_plot <- ggplot(df_long, aes(x = StartDate, y = factor(R0), fill = Value)) +
   geom_tile(color = "white") +
   scale_fill_distiller(palette = "RdBu") + #  limits = scales, oob = scales::squish) + 
   labs(x = "Start Date",
        y = expression(R[0]),
        fill = "Avg.\nLoglike") +
+  facet_grid(. ~ Distribution) + 
   scale_x_date(expand = c(0, 0)) +  # Remove whitespace on the x-axis
   scale_y_discrete(expand = c(0, 0)) +  # Remove whitespace on the y-axis
   theme_bw() +
@@ -388,10 +403,11 @@ inferred_parameters_plot <- ggplot(df_long, aes(x = StartDate, y = factor(R0), f
 ## Sampling parameter combinations
 set.seed(123)
 samples <- 10000
-sampled_indices <- sample(1:nrow(df_long), 
+distribution <- "negative_binomial"
+sampled_indices <- sample((1:nrow(df_long))[df_long$Distribution == distribution], 
                           size = 10000,
                           replace = TRUE,
-                          prob = df_long$Probability)
+                          prob = (df_long$Probability)[df_long$Distribution == distribution])
 sampled_data <- df_long[sampled_indices, c("R0", "StartDate", "Value")] 
 
 ## Marginal for R0
@@ -455,12 +471,12 @@ for (i in 1:samples) {
   R0_index <- which(rownames(loglik_avg) == paste0("R0=", R0))
   start_date <- sampled_data[i, "StartDate"]
   start_date <- start_date$StartDate
-  start_date_index <- which(colnames(loglik_avg) == paste0("start=", start_date))
+  start_date_index <- which(substr(colnames(loglik_avg), 7, 16) == start_date)
   k <- sample(1:iterations, 1)
-  sampled_output_matrix[i, ] <- output_matrix[k, R0_index, start_date_index, 1, 1, ]
-  max_num_obs_deaths <- max(cumsum(output_matrix[k, R0_index, start_date_index, 1, 1, ]))
+  sampled_output_matrix[i, ] <- output_matrix[k, R0_index, start_date_index, 1, 1, which(likelihood_distribution_scan == distribution), ]
+  max_num_obs_deaths <- max(cumsum(output_matrix[k, R0_index, start_date_index, 1, 1, which(likelihood_distribution_scan == distribution), ]))
   mod_factor <- N / max_num_obs_deaths
-  N_over_time <- N - (cumsum(output_matrix[k, R0_index, start_date_index, 1, 1, ]) * mod_factor) ## THIS IS A TEMPORARY FIX # need to output the inferred deaths, not just the observed ones 
+  N_over_time <- N - (cumsum(output_matrix[k, R0_index, start_date_index, 1, 1, which(likelihood_distribution_scan == distribution), ]) * mod_factor) ## THIS IS A TEMPORARY FIX # need to output the inferred deaths, not just the observed ones 
   sampled_Reff_matrix[i, ] <- N_over_time * implied_beta_sim / gamma
 }
 

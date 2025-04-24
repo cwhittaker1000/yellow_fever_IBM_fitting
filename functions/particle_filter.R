@@ -162,14 +162,11 @@ r_loglike <- function(params, data, misc) {
   ## Calculating the likelihood
   epi_likelihood <- ifelse("epidemiological" %in% misc$likelihood, sum(loglikelihood), 0) # likelihood for epidemiological data 
   import_likelihood <- ifelse("importations" %in% misc$likelihood, dpois(x = importations, lambda = misc$empirical_importations, log = TRUE), 0) # likelihood for number of empirical importations 
-  start_date_relative_first_death <- as.numeric(misc$start_date - as.Date("2017-10-09"))
-  start_date_likelihood <- ifelse("start_date" %in% misc$likelihood, dweibull(x = start_date_relative_first_death, shape = 5.562197, scale = 29.13864, log = TRUE), 0)
+  start_date_relative_first_death <- as.numeric(misc$start_date - misc$start_date_weibull_fitting)
+  start_date_likelihood <- ifelse("start_date" %in% misc$likelihood, dweibull(x = start_date_relative_first_death, shape = misc$weibull_shape, scale = misc$weibull_scale, log = TRUE), 0)
                            ## note this comes from fitting a Weibull dist to the 2.5, 50 and 97.5 quantile for MRCA for Clade A from Nunos' 
-                           ## teams message with bootstrap support > 0.7, minus 1 full generation time (approx 19 days). 
+                           ## teams message with bootstrap support > 0.7, minus 50% of an EIP.
                            ## all dates are relative to date of first NHP death i.e. 2017-10-09 (9th Oct 2017)
-                           ## 2.5% = 2017-11-11, - 19 days = "2017-10-23" i.e. 14 days since 2017-10-09
-                           ## 50% = 2017-11-26, - 19 days = "2017-11-07"  i.e  29 days since 2017-10-09
-                           ## 97.5% = 2017-12-03, - 19 days = "2017-11-14" i.e. 36 days since 2017-10-09
   R0_prior <- misc$prior_function(params["R0"])
   total_likelihood <- epi_likelihood + import_likelihood + start_date_likelihood + R0_prior
   
