@@ -43,20 +43,38 @@ fit_weibull_3quantiles <- function(q025_target = 14,
   ))
 }
 
-## Example usage
 start_date_weibull_fitting <- as.Date("2017-10-09")
-lower <- as.Date("2017-10-30") - 5
-median <- as.Date("2017-11-19") - 5
-upper <-  as.Date("2017-11-25") - 5
 
-weibull_fit <- fit_weibull_3quantiles(q025_target = as.numeric(lower - start_date_weibull_fitting),
-                                      q50_target = as.numeric(median - start_date_weibull_fitting),  
-                                      q975_target = as.numeric(upper - start_date_weibull_fitting))
-weibull_shape <- weibull_fit$shape
-weibull_scale <- weibull_fit$scale
+## Later Importation Assumptions
+lower_late <- as.Date("2017-10-30") - 5
+median_late <- as.Date("2017-11-19") - 5
+upper_late <-  as.Date("2017-11-30") - 5
 
-# x <- rweibull(10000, shape = weibull_shape, scale = weibull_scale)
-# hist(x - 5, breaks = 20)
+weibull_fit_late <- fit_weibull_3quantiles(q025_target = as.numeric(lower_late - start_date_weibull_fitting),
+                                            q50_target = as.numeric(median_late - start_date_weibull_fitting),  
+                                            q975_target = as.numeric(upper_late - start_date_weibull_fitting))
+weibull_shape_late <- weibull_fit_late$shape
+weibull_scale_late <- weibull_fit_late$scale
+
+## Earlier Importation Assumptions
+lower_early <- as.Date("2017-10-18") - 5
+median_early <- as.Date("2017-11-14") - 5
+upper_early <-  as.Date("2017-11-27") - 5
+
+weibull_fit_early <- fit_weibull_3quantiles(q025_target = as.numeric(lower_early - start_date_weibull_fitting),
+                                           q50_target = as.numeric(median_early - start_date_weibull_fitting),  
+                                           q975_target = as.numeric(upper_early - start_date_weibull_fitting))
+weibull_shape_early <- weibull_fit_early$shape
+weibull_scale_early <- weibull_fit_early$scale
+
+weibull_shape_vector <- c(weibull_shape_early, weibull_shape_late)
+weibull_scale_vector <- c(weibull_scale_early, weibull_scale_late)
+
+
+x <- rweibull(10000, shape = weibull_shape_early, scale = weibull_scale_early)
+hist(x, breaks = 20)
+
+
 # sum(x < 16)
 # sum(x < 36)
 # sum(x < 42)
