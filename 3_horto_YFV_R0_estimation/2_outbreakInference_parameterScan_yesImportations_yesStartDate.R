@@ -67,9 +67,9 @@ importation_last_date <- max(horto_df_fitting$date_collection) - generation_time
 ## Parameters for initial particle filtering to identify parameter regime of highest likelihood
 R0_scan <- c(2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14)
 start_date_scan <- start_date + seq(0, 36, 3)
-transmission_type_scan <- c("density_dependent")
+transmission_type_scan <- "density_dependent" # c("frequency_dependent", "density_dependent")
 exponential_noise_scan <- 1/1e-1
-likelihood_distribution_scan <- "negative_binomial" # c("poisson", "negative_binomial")
+likelihood_distribution_scan <- "negative_binomial" # c("poisson", "negative_binomial") # "negative_binomial"
 negative_binomial_size <- 1
 R0_prior_function <- function(R0_value) { return(log(dtruncnorm(R0_value, a = 1, b = 16, mean = fitted_mu, sd = fitted_sigma))) }
 mrca_prior_scan <- c("early", "late")
@@ -290,7 +290,8 @@ R0_marginal_plot <- ggplot(sampled_data_R0, aes(x = R0, fill = AvgValue)) +
        fill = "Avg.\nLoglike") +
   theme_bw() +
   theme(plot.title = element_text(face = "bold"),
-        legend.position = "none") 
+        legend.position = "none",
+        panel.grid.major = element_blank(), panel.grid.minor = element_blank())
 
 likelihood_plot_legend <- cowplot::get_legend(overall_likelihood_plot)
 likelihood_R0_marginal <- cowplot::plot_grid(overall_likelihood_plot + theme(legend.position = "none"),
@@ -380,7 +381,8 @@ alt_Reff_deaths_plot <- ggplot() +
   scale_x_date(date_breaks = "1 week", limits = c(as.Date("2017-11-06"), as.Date("2018-01-08"))) +
   labs(x = NULL) +
   theme_bw() +
-  theme(text = element_text(size = 12), axis.text.x = element_text(angle = 45, hjust = 1), plot.title = element_text(hjust = 0.5))
+  theme(text = element_text(size = 12), axis.text.x = element_text(angle = 45, hjust = 1), plot.title = element_text(hjust = 0.5),
+        panel.grid.major = element_blank(), panel.grid.minor = element_blank())
 
 
 overall_R0_modelling_plot <- cowplot::plot_grid(likelihood_R0_marginal, alt_Reff_deaths_plot, 

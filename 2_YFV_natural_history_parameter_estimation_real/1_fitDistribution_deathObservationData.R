@@ -42,61 +42,60 @@ data_stan <- list(N = nrow(df) - 1,
                   b_1 = 2,
                   b_2 = 2)
 fit <- sampling(model, data=data_stan, iter=5000, chains=1)
-hist(rstan::extract(fit, "days_simulated")[[1]], breaks = 50)
+hist(as.vector(rstan::extract(fit, "days_simulated")[[1]]), breaks = 50)
 summary(fit)
 saveRDS(fit, "outputs/deathObservation_distMix_stanFit.rds")
+days <- as.vector(rstan::extract(fit, "days_simulated")[[1]])
+breaks <- seq(floor(min(days)), ceiling(max(days)) + 1, by = 1)
+bin_counts <- hist(days, breaks = breaks, plot = FALSE)$counts
+names(bin_counts) <- paste0(breaks[-length(breaks)], "–", breaks[-1])
+df_mix <- data.frame(x = breaks[-length(breaks)],
+                     y = bin_counts)
 
-## Fitting the time between infection and death - Gamma distribution
-model <- stan_model("2_YFV_natural_history_parameter_estimation_real/models/observation_time_gamma.stan")
-data_stan <- list(N = nrow(df) - 1,
-                  days = as.numeric(df2$death_collection_delay2) + 0.01,
-                  a_1 = 1,
-                  a_2 = 1,
-                  b_1 = 2,
-                  b_2 = 2)
-fit <- sampling(model, data=data_stan, iter=2000, chains=4)
-hist(rstan::extract(fit, "days_simulated")[[1]], breaks = 50)
-summary(fit)
-saveRDS(fit, "outputs/deathObservation_distGamma_stanFit.rds")
-hist(rgamma(10000, rstan::extract(fit, "a")[[1]], rstan::extract(fit, "b")[[1]]), breaks = 50)
-
-df_gamma <- lapply(seq_along(1:1000), function(i) {
-  x_vals <- seq(0, 15, by = 0.5)
-  data.frame(i = i, x = x_vals,
-             pdfval = dgamma(x_vals, shape = rstan::extract(fit, "a")[[1]][i], 
-                             rate = rstan::extract(fit, "b")[[1]][i]))}) %>%
-  bind_rows()
+# ## Fitting the time between infection and death - Gamma distribution
+# model <- stan_model("2_YFV_natural_history_parameter_estimation_real/models/observation_time_gamma.stan")
+# data_stan <- list(N = nrow(df) - 1,
+#                   days = as.numeric(df2$death_collection_delay2) + 0.01,
+#                   a_1 = 1,
+#                   a_2 = 1,
+#                   b_1 = 2,
+#                   b_2 = 2)
+# fit <- sampling(model, data=data_stan, iter=2000, chains=4)
+# hist(rstan::extract(fit, "days_simulated")[[1]], breaks = 50)
+# summary(fit)
+# saveRDS(fit, "outputs/deathObservation_distGamma_stanFit.rds")
+# hist(rgamma(10000, rstan::extract(fit, "a")[[1]], rstan::extract(fit, "b")[[1]]), breaks = 50)
+# 
+# df_gamma <- lapply(seq_along(1:1000), function(i) {
+#   x_vals <- seq(0, 15, by = 0.5)
+#   data.frame(i = i, x = x_vals,
+#              pdfval = dgamma(x_vals, shape = rstan::extract(fit, "a")[[1]][i], 
+#                              rate = rstan::extract(fit, "b")[[1]][i]))}) %>%
+#   bind_rows()
 
 
 ## Fitting the time between infection and death - Exponential distribution
-model2 <- stan_model("2_YFV_natural_history_parameter_estimation_real/models/observation_time_exp.stan")
-data_stan2 <- list(N = nrow(df) - 1,
-                   days = as.numeric(df2$death_collection_delay2),
-                   a_1 = 1)
-fit2 <- sampling(model2, data = data_stan2, iter = 2000, chains = 4)
-hist(rstan::extract(fit2, "days_simulated")[[1]], breaks = 50)
-summary(fit2)
-saveRDS(fit2, "outputs/deathObservation_distExp_stanFit.rds")
-hist(rexp(10000, rstan::extract(fit2, "a")[[1]]), breaks = 50)
-
-df_exp <- lapply(seq_along(1:1000), function(i) {
-  x_vals <- seq(0, 15, by = 0.5)
-  data.frame(i = i, x = x_vals,
-             pdfval = dexp(x_vals, rate = rstan::extract(fit2, "a")[[1]][i]))}) %>%
-  bind_rows()
+# model2 <- stan_model("2_YFV_natural_history_parameter_estimation_real/models/observation_time_exp.stan")
+# data_stan2 <- list(N = nrow(df) - 1,
+#                    days = as.numeric(df2$death_collection_delay2),
+#                    a_1 = 1)
+# fit2 <- sampling(model2, data = data_stan2, iter = 2000, chains = 4)
+# hist(rstan::extract(fit2, "days_simulated")[[1]], breaks = 50)
+# summary(fit2)
+# saveRDS(fit2, "outputs/deathObservation_distExp_stanFit.rds")
+# hist(rexp(10000, rstan::extract(fit2, "a")[[1]]), breaks = 50)
+# 
+# df_exp <- lapply(seq_along(1:1000), function(i) {
+#   x_vals <- seq(0, 15, by = 0.5)
+#   data.frame(i = i, x = x_vals,
+#              pdfval = dexp(x_vals, rate = rstan::extract(fit2, "a")[[1]][i]))}) %>%
+#   bind_rows()
 
 ## Comparing them to empirical distribution and calculating which fits better
-df_sim_gamma <- tibble(obs_delay = rstan::extract(fit, "days_simulated")[[1]], iteration = seq_along(fit), type = "simulatedGamma")
-df_sim_exp <- tibble(obs_delay = rstan::extract(fit2, "days_simulated")[[1]], iteration = seq_along(fit2), type = "simulatedExp")
+# df_sim_gamma <- tibble(obs_delay = rstan::extract(fit, "days_simulated")[[1]], iteration = seq_along(fit), type = "simulatedGamma")
+# df_sim_exp <- tibble(obs_delay = rstan::extract(fit2, "days_simulated")[[1]], iteration = seq_along(fit2), type = "simulatedExp")
 df_empirical <- tibble(obs_delay = as.numeric(df2$death_collection_delay), iteration = seq_along(as.numeric(df2$death_collection_delay)), type = "empirical")
-
-df_overall <- rbind(df_sim_gamma, df_sim_exp, df_empirical)
-ggplot(df_overall) +
-  geom_density(aes(x = obs_delay, colour=type)) +
-  scale_x_continuous(limits = c(0, 15)) +
-  scale_color_brewer("Data", palette = "Dark2") +
-  xlab("Days from death to observation") +
-  ylab("Density")
+df_overall <- rbind(df_empirical)
 
 # Normalize counts for empirical data
 df_empirical_counts <- df_overall %>%
@@ -143,10 +142,9 @@ deaths_obs_delay_plot2 <- ggplot() +
   geom_bar(data = df_empirical_counts,
            aes(x = obs_delay, y = normalized_count, fill = "empirical"), 
            stat = "identity", alpha = 1, width = 0.7) +
-  # Density for simulated gamma and exponential
-  geom_line(data = df_exp,
-               aes(x = x, y = pdfval, group = i), alpha = 0.025, 
-               size = 1, adjust = 1, col = "#80C498") +
+  geom_line(data = df_mix,
+           aes(x = x, y = y/sum(y)),
+           stat = "identity", col = "#7ADFBB", linewidth = 2) +
   # Aesthetic adjustments
   scale_x_continuous(limits = c(-1, 15), breaks = seq(0, 15, 1)) +
   scale_y_continuous(name = "Density / Normalized Count") +
